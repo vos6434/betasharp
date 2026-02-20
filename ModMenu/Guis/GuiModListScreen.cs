@@ -6,7 +6,7 @@ namespace ModMenu.Guis;
 
 public class GuiModListScreen : GuiScreen
 {
-    private const bool EnableFakeModsForTesting = true;
+    private const bool EnableFakeModsForTesting = false;
     private const int FakeModCount = 10;
     private const int ButtonDone = 200;
     private const int PanelGap = 10;

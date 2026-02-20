@@ -29,5 +29,17 @@
       <Error Condition="'$(MSBuildLastTaskResult)' != 'true'"
              Text="ModMenu build failed. Launch canceled. Check the build output for ModMenu errors." />
     </Target>
+
+    <Target Name="BuildHungerModForDebug"
+            AfterTargets="Build"
+            Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipHungerModPrebuild)' != 'true' and Exists('..\HungerMod\HungerMod.csproj')">
+      <Message Importance="high" Text="Rebuilding HungerMod before launch..." />
+      <MSBuild Projects="..\HungerMod\HungerMod.csproj"
+               Targets="Rebuild"
+               Properties="Configuration=$(Configuration);Platform=$(Platform);BuildProjectReferences=false;SkipHungerModPrebuild=true"
+               ContinueOnError="WarnAndContinue" />
+      <Error Condition="'$(MSBuildLastTaskResult)' != 'true'"
+             Text="HungerMod build failed. Launch canceled. Check the build output for HungerMod errors." />
+    </Target>
   
   </Project>
