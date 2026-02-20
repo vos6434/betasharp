@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>ModMenu</AssemblyName>
     <RootNamespace>ModMenu</RootNamespace>
+    <AssemblyVersion>0.0.0.1</AssemblyVersion>
     <ModsOutputDir>$(AppData)\.BetaSharp\mods\</ModsOutputDir>
   </PropertyGroup>
 

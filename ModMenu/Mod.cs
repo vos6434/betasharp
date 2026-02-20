@@ -1,7 +1,8 @@
-﻿using BetaSharp.Client.Guis;
-using BetaSharp.Modding;
-using MonoMod.RuntimeDetour;
 using System.Reflection;
+using BetaSharp.Client.Guis;
+using BetaSharp.Modding;
+using ModMenu.Guis;
+using MonoMod.RuntimeDetour;
 
 namespace ModMenu;
 
@@ -9,7 +10,7 @@ namespace ModMenu;
 public class Mod : IMod
 {
     public string Name => "Mod Menu";
-    public string Description => "Adds a mod menu to the main menu.";
+    public string Description => "Adds a mod menu to the main menu. Im making a very long description as a test because i dont know what hapens wen the description is very long. Will it overflow? Will it wrap? Will it crash? Who knows! Maybe all of the above! Maybe none of the above! The suspense is killing me!";
     public string Author => "vos6434";
     public Side Side => Side.Client;
     private const int ButtonModMenu = 5;
@@ -103,7 +104,7 @@ public class Mod : IMod
         int buttonX;
         int buttonY;
 
-        // rename texturepacks button from "Texture Packs and Mods" to just "Texture Packs"
+        // rename texturepacks button from "Texture Packs and Mods" to just "Texturepacks".
         if (modsButton is not null)
         {
             modsButton.DisplayString = "Texturepacks";
@@ -135,8 +136,7 @@ public class Mod : IMod
     {
         if (button.Id == ButtonModMenu)
         {
-            // WIP open mod menu gui
-            Console.WriteLine("Mod Menu button clicked.");
+            instance.mc.displayGuiScreen(new GuiModListScreen(instance));
             return;
         }
 
