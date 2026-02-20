@@ -22,6 +22,7 @@ using BetaSharp.Client.Textures;
 using BetaSharp.Entities;
 using BetaSharp.Items;
 using BetaSharp.Launcher;
+using BetaSharp.Modding;
 using BetaSharp.Profiling;
 using BetaSharp.Server.Internal;
 using BetaSharp.Stats;
@@ -172,6 +173,9 @@ public partial class Minecraft
         Display.setTitle("Minecraft Beta 1.7.3");
 
         mcDataDir = getMinecraftDir();
+
+        Mods.LoadMods(System.IO.Path.Combine(mcDataDir.getAbsolutePath(), "mods"), Side.Client);
+
         saveLoader = new RegionWorldStorageSource(new java.io.File(mcDataDir, "saves"));
         options = new GameOptions(this, mcDataDir.getAbsolutePath());
         Profiler.Enabled = options.DebugMode;

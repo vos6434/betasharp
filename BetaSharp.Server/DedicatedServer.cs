@@ -1,4 +1,6 @@
+using System.Reflection;
 using BetaSharp.Launcher;
+using BetaSharp.Modding;
 using BetaSharp.Server.Network;
 using BetaSharp.Server.Threading;
 using java.lang;
@@ -66,6 +68,8 @@ public class DedicatedServer(IServerConfiguration config) : MinecraftServer(conf
     {
         Log.Initialize(new LogOptions(IsServer: true));
         Log.AddCrashHandlers();
+
+        Mods.LoadMods("./mods", Side.Server);
 
         try
         {
