@@ -1,3 +1,4 @@
+using BetaSharp.Modding;
 using BetaSharp.Network.Packets.S2CPlay;
 using BetaSharp.Server.Commands;
 using BetaSharp.Server.Entities;
@@ -98,6 +99,8 @@ public abstract class MinecraftServer : Runnable, CommandOutput
                 seed = hash;
             }
         }
+
+        Mods.LoadMods("./mods", Side.Server);
 
         _logger.LogInformation($"Preparing level \"{worldName}\"");
         loadWorld(new RegionWorldStorageSource(getFile(".").getAbsolutePath()), worldName, seed);

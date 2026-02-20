@@ -1,3 +1,5 @@
+using BetaSharp.Launcher;
+using BetaSharp.Modding;
 using BetaSharp.Server.Network;
 using BetaSharp.Server.Threading;
 using java.lang;
@@ -66,6 +68,8 @@ public class DedicatedServer(IServerConfiguration config) : MinecraftServer(conf
     public static void Main(string[] args)
     {
         Log.Instance.Initialize(Directory.GetCurrentDirectory());
+
+        Mods.LoadMods("./mods", Side.Server);
 
         try
         {
