@@ -6,6 +6,7 @@ namespace BetaSharp.Modding;
 public class Mods
 {
     public static ImmutableList<IMod> ModRegistry { get; private set; } = null!;
+    public static string ModsFolder { get; private set; }
 
     public static void LoadMods(string modsFolder, Side side)
     {
@@ -14,6 +15,7 @@ public class Mods
             Directory.CreateDirectory(modsFolder);
             return; // It's empty.
         }
+        ModsFolder = System.IO.Path.GetFullPath(modsFolder);
         string[] modsFiles = Directory.GetFiles(modsFolder).Where(f => f.EndsWith(".dll")).ToArray();
 
         Log.Info($"Found {modsFiles.Length} mods in mods folder.");

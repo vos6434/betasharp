@@ -16,7 +16,7 @@ public class Mod : IMod
     public void Initialize()
     {
         Console.WriteLine("Initialize called for Example Mod");
-        _textRendererHook = new(typeof(TextRenderer).GetMethod("RenderString")!, TextRenderer_RenderString);
+        _textRendererHook = new(typeof(TextRenderer).GetMethod("renderString")!, TextRenderer_renderString);
     }
 
     public void PostInitialize()
@@ -31,7 +31,7 @@ public class Mod : IMod
         _textRendererHook.Dispose();
     }
 
-    private static void TextRenderer_RenderString(
+    private static void TextRenderer_renderString(
         Action<TextRenderer, string, int, int, uint, bool> orig,
         TextRenderer instance,
         string text,
