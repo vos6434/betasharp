@@ -16,5 +16,17 @@
     <ItemGroup>
       <PackageReference Include="SixLabors.ImageSharp.Drawing" Version="2.1.7" />
     </ItemGroup>
+
+    <Target Name="BuildModMenuForDebug"
+            AfterTargets="Build"
+            Condition="'$(BuildingInsideVisualStudio)' == 'true' and '$(DesignTimeBuild)' != 'true' and Exists('..\ModMenu\ModMenu.csproj')">
+      <Message Importance="high" Text="Building ModMenu before launch..." />
+      <MSBuild Projects="..\ModMenu\ModMenu.csproj"
+               Targets="Build"
+               Properties="Configuration=$(Configuration);Platform=$(Platform);BuildProjectReferences=false"
+               ContinueOnError="WarnAndContinue" />
+      <Error Condition="'$(MSBuildLastTaskResult)' != 'true'"
+             Text="ModMenu build failed. Launch canceled. Check the build output for ModMenu errors." />
+    </Target>
   
   </Project>
