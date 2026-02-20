@@ -60,7 +60,6 @@ public class GuiModListScreen : GuiScreen
 
     public override void Render(int mouseX, int mouseY, float partialTicks)
     {
-        DrawDefaultBackground();
         _modListSlot.DrawScreen(mouseX, mouseY, partialTicks);
 
         DrawCenteredString(FontRenderer, "Mod List", Width / 2, 14, 0xFFFFFF);

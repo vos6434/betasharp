@@ -41,7 +41,7 @@ public class GuiModListSlot : GuiSlot
 
     protected override void DrawBackground()
     {
-        // Parent GUI draws the full-screen background once.
+        _parent.DrawBackground(0);
     }
 
     protected override void DrawSlot(int index, int x, int y, int slotHeight, Tessellator tess)
