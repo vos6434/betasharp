@@ -14,6 +14,9 @@ namespace HungerMod;
 public class Mod : IMod
 {
     private const int DoubledMaxHealth = 40;
+    private const int ExtraHudBoxCount = 3;
+    private const int ExtraHudBoxSize = 18;
+    private const int ExtraHudBoxSpacing = 2;
     private static readonly FieldInfo? GuiIngameMcField = typeof(GuiIngame)
         .GetField("_mc", BindingFlags.Instance | BindingFlags.NonPublic);
 
@@ -187,6 +190,8 @@ public class Mod : IMod
         ScaledResolution scaled = new(mc.options, mc.displayWidth, mc.displayHeight);
         int scaledWidth = scaled.ScaledWidth;
         int scaledHeight = scaled.ScaledHeight;
+        int armorValue = mc.player.getPlayerArmorValue();
+        DrawExtraHudBoxes(scaledWidth, scaledHeight, armorValue);
 
         bool heartBlink = mc.player.hearts / 3 % 2 == 1;
         if (mc.player.hearts < 10)
@@ -236,6 +241,55 @@ public class Mod : IMod
                 instance.DrawTexturedModalRect(x, y, 61, 0, 9, 9);
             }
         }
+    }
+
+    private static void DrawExtraHudBoxes(int scaledWidth, int scaledHeight, int armorValue)
+    {
+        int hudRightX = scaledWidth / 2 + 91;
+        int totalWidth = ExtraHudBoxCount * ExtraHudBoxSize + (ExtraHudBoxCount - 1) * ExtraHudBoxSpacing;
+        int boxStartX = hudRightX - totalWidth;
+
+        int hotbarTopY = scaledHeight - 22;
+        int armorRowY = scaledHeight - 32;
+        int boxY = armorValue > 0
+            ? armorRowY - ExtraHudBoxSize - 1
+            : hotbarTopY - ExtraHudBoxSize - 1;
+
+        for (int i = 0; i < ExtraHudBoxCount; i++)
+        {
+            int x = boxStartX + i * (ExtraHudBoxSize + ExtraHudBoxSpacing);
+            DrawHudBox(x, boxY);
+        }
+    }
+
+    private static void DrawHudBox(int x, int y)
+    {
+        DrawSolidRect(x, y, x + ExtraHudBoxSize, y + ExtraHudBoxSize, 0x80000000);
+    }
+
+    private static void DrawSolidRect(int left, int top, int right, int bottom, uint color)
+    {
+        float a = (color >> 24 & 255) / 255.0F;
+        float r = (color >> 16 & 255) / 255.0F;
+        float g = (color >> 8 & 255) / 255.0F;
+        float b = (color & 255) / 255.0F;
+
+        Tessellator tess = Tessellator.instance;
+
+        GLManager.GL.Enable(GLEnum.Blend);
+        GLManager.GL.Disable(GLEnum.Texture2D);
+        GLManager.GL.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
+        GLManager.GL.Color4(r, g, b, a);
+
+        tess.startDrawingQuads();
+        tess.addVertex(left, bottom, 0.0D);
+        tess.addVertex(right, bottom, 0.0D);
+        tess.addVertex(right, top, 0.0D);
+        tess.addVertex(left, top, 0.0D);
+        tess.draw();
+
+        GLManager.GL.Enable(GLEnum.Texture2D);
+        GLManager.GL.Disable(GLEnum.Blend);
     }
 
     private static void ApplyDoubleHealthProfile(EntityPlayer player, bool fillToMax)
