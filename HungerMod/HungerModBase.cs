@@ -17,7 +17,7 @@ using Silk.NET.OpenGL.Legacy;
 
 namespace HungerMod;
 
-[ModSide(Side.Client)]
+[ModSide(Side.Both)]
 public class HungerModBase : ModBase
 {
     private const int BaseMaxHealth = 20;
@@ -41,11 +41,10 @@ public class HungerModBase : ModBase
         PropertyNameCaseInsensitive = true
     };
 
-    private static readonly ItemRenderer HudItemRenderer = new();
-    private static readonly FieldInfo? GuiIngameMcField = typeof(GuiIngame)
-        .GetField("_mc", BindingFlags.Instance | BindingFlags.NonPublic);
-    private static readonly FieldInfo? ClientPlayerMcField = typeof(ClientPlayerEntity)
-        .GetField("mc", BindingFlags.Instance | BindingFlags.NonPublic);
+    // Client-only reflection/rendering fields — initialize when running on client.
+    private static ItemRenderer? HudItemRenderer = null;
+    private static FieldInfo? GuiIngameMcField = null;
+    private static FieldInfo? ClientPlayerMcField = null;
     private static int ExtraHudBoxCount = DefaultExtraHudBoxCount;
     private static int ExtraHudBoxSize = DefaultExtraHudBoxSize;
     private static int HudItemIconSize = DefaultHudItemIconSize;
@@ -64,6 +63,7 @@ public class HungerModBase : ModBase
     private Hook? _itemSoupUseHook;
     private Hook? _clientPlayerSendChatMessageHook;
     private Hook? _entityClientPlayerMPSendChatMessageHook;
+    private Hook? _playerControllerMPSendUseItemHook;
 
     public override string Name => "Hunger Mod";
     public override string Description => "Valheim-style timed food buffs for health and regeneration.";
@@ -72,6 +72,14 @@ public class HungerModBase : ModBase
     public override void Initialize(Side side)
     {
         LoadConfig();
+
+        // If running on client or a combined client+server process, initialize client-only renderer/fieldinfo and hooks.
+        if (side == Side.Client || side == Side.Both)
+        {
+            HudItemRenderer = new ItemRenderer();
+            GuiIngameMcField = typeof(GuiIngame).GetField("_mc", BindingFlags.Instance | BindingFlags.NonPublic);
+            ClientPlayerMcField = typeof(ClientPlayerEntity).GetField("mc", BindingFlags.Instance | BindingFlags.NonPublic);
+        }
 
         MethodInfo? playerTickMovementMethod = typeof(EntityPlayer).GetMethod(
             nameof(EntityPlayer.tickMovement),
@@ -148,98 +156,177 @@ public class HungerModBase : ModBase
             _entityPlayerWriteNbtHook = new Hook(playerWriteNbtMethod, EntityPlayer_WriteNbt);
         }
 
-        MethodInfo? guiRenderInventorySlotMethod = typeof(GuiIngame).GetMethod(
-            "renderInventorySlot",
-            BindingFlags.Instance | BindingFlags.NonPublic,
-            binder: null,
-            types: [typeof(int), typeof(int), typeof(int), typeof(float)],
-            modifiers: null);
-        if (guiRenderInventorySlotMethod is null)
+        // Only hook GUI-related methods on the client side (or if both sides are loaded into this process).
+        if (side == Side.Client || side == Side.Both)
         {
-            Console.WriteLine("HungerMod: failed to hook GuiIngame.renderInventorySlot (method not found).");
-        }
-        else
-        {
-            _guiIngameRenderInventorySlotHook = new Hook(guiRenderInventorySlotMethod, GuiIngame_RenderInventorySlot);
+            MethodInfo? guiRenderInventorySlotMethod = typeof(GuiIngame).GetMethod(
+                "renderInventorySlot",
+                BindingFlags.Instance | BindingFlags.NonPublic,
+                binder: null,
+                types: [typeof(int), typeof(int), typeof(int), typeof(float)],
+                modifiers: null);
+            if (guiRenderInventorySlotMethod is null)
+            {
+                Console.WriteLine("HungerMod: failed to hook GuiIngame.renderInventorySlot (method not found).");
+            }
+            else
+            {
+                _guiIngameRenderInventorySlotHook = new Hook(guiRenderInventorySlotMethod, GuiIngame_RenderInventorySlot);
+            }
+
+            MethodInfo? guiRenderGameOverlayMethod = typeof(GuiIngame).GetMethod(
+                nameof(GuiIngame.renderGameOverlay),
+                BindingFlags.Instance | BindingFlags.Public,
+                binder: null,
+                types: [typeof(float), typeof(bool), typeof(int), typeof(int)],
+                modifiers: null);
+            if (guiRenderGameOverlayMethod is null)
+            {
+                Console.WriteLine("HungerMod: failed to hook GuiIngame.renderGameOverlay (method not found).");
+            }
+            else
+            {
+                _guiIngameRenderGameOverlayHook = new Hook(guiRenderGameOverlayMethod, GuiIngame_RenderGameOverlay);
+            }
+
+            MethodInfo? clientPlayerSendChatMessageMethod = typeof(ClientPlayerEntity).GetMethod(
+                nameof(ClientPlayerEntity.sendChatMessage),
+                BindingFlags.Instance | BindingFlags.Public,
+                binder: null,
+                types: [typeof(string)],
+                modifiers: null);
+            if (clientPlayerSendChatMessageMethod is null)
+            {
+                Console.WriteLine("HungerMod: failed to hook ClientPlayerEntity.sendChatMessage (method not found).");
+            }
+            else
+            {
+                _clientPlayerSendChatMessageHook = new Hook(
+                    clientPlayerSendChatMessageMethod,
+                    ClientPlayerEntity_SendChatMessage);
+            }
+
+            MethodInfo? entityClientPlayerMPSendChatMessageMethod = typeof(EntityClientPlayerMP).GetMethod(
+                nameof(EntityClientPlayerMP.sendChatMessage),
+                BindingFlags.Instance | BindingFlags.Public,
+                binder: null,
+                types: [typeof(string)],
+                modifiers: null);
+            if (entityClientPlayerMPSendChatMessageMethod is null)
+            {
+                Console.WriteLine("HungerMod: failed to hook EntityClientPlayerMP.sendChatMessage (method not found).");
+            }
+            else
+            {
+                _entityClientPlayerMPSendChatMessageHook = new Hook(
+                    entityClientPlayerMPSendChatMessageMethod,
+                    EntityClientPlayerMP_SendChatMessage);
+            }
+
+            // Hook PlayerControllerMP.sendUseItem to prevent sending the use packet when
+            // the player already has an active food buff (client-side guard).
+            try
+            {
+                Type? pcType = null;
+                foreach (Assembly asm in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    pcType = asm.GetType("BetaSharp.Client.Input.PlayerControllerMP");
+                    if (pcType != null) break;
+                }
+
+                if (pcType != null)
+                {
+                    MethodInfo? sendUseItemMethod = pcType.GetMethod(
+                        "sendUseItem",
+                        BindingFlags.Instance | BindingFlags.Public,
+                        binder: null,
+                        types: new Type[] { typeof(EntityPlayer), typeof(World), typeof(ItemStack) },
+                        modifiers: null);
+
+                    if (sendUseItemMethod != null)
+                    {
+                        _playerControllerMPSendUseItemHook = new Hook(sendUseItemMethod, PlayerControllerMP_SendUseItem);
+                    }
+                }
+            }
+            catch { }
         }
 
-        MethodInfo? guiRenderGameOverlayMethod = typeof(GuiIngame).GetMethod(
-            nameof(GuiIngame.renderGameOverlay),
-            BindingFlags.Instance | BindingFlags.Public,
-            binder: null,
-            types: [typeof(float), typeof(bool), typeof(int), typeof(int)],
-            modifiers: null);
-        if (guiRenderGameOverlayMethod is null)
+        // Locate the game's runtime types for ItemFood/ItemStack/World/EntityPlayer so hooks
+        // work regardless of assembly load contexts (client vs server types may differ).
+        Type? gameItemFoodType = null;
+        Type? gameItemStackType = null;
+        Type? gameWorldType = null;
+        Type? gameEntityPlayerType = null;
+        foreach (Assembly asm in AppDomain.CurrentDomain.GetAssemblies())
         {
-            Console.WriteLine("HungerMod: failed to hook GuiIngame.renderGameOverlay (method not found).");
-        }
-        else
-        {
-            _guiIngameRenderGameOverlayHook = new Hook(guiRenderGameOverlayMethod, GuiIngame_RenderGameOverlay);
-        }
-
-        MethodInfo? itemFoodUseMethod = typeof(ItemFood).GetMethod(
-            nameof(ItemFood.use),
-            BindingFlags.Instance | BindingFlags.Public,
-            binder: null,
-            types: [typeof(ItemStack), typeof(World), typeof(EntityPlayer)],
-            modifiers: null);
-        if (itemFoodUseMethod is null)
-        {
-            Console.WriteLine("HungerMod: failed to hook ItemFood.use (method not found).");
-        }
-        else
-        {
-            _itemFoodUseHook = new Hook(itemFoodUseMethod, ItemFood_Use);
+            gameItemFoodType = asm.GetType("BetaSharp.Items.ItemFood");
+            if (gameItemFoodType != null)
+            {
+                gameItemStackType = asm.GetType("BetaSharp.Items.ItemStack");
+                gameWorldType = asm.GetType("BetaSharp.Worlds.World");
+                gameEntityPlayerType = asm.GetType("BetaSharp.Entities.EntityPlayer");
+                break;
+            }
         }
 
-        MethodInfo? itemSoupUseMethod = typeof(ItemSoup).GetMethod(
-            nameof(ItemSoup.use),
-            BindingFlags.Instance | BindingFlags.Public,
-            binder: null,
-            types: [typeof(ItemStack), typeof(World), typeof(EntityPlayer)],
-            modifiers: null);
-        if (itemSoupUseMethod is null)
+        if (gameItemFoodType == null || gameItemStackType == null || gameWorldType == null || gameEntityPlayerType == null)
         {
-            Console.WriteLine("HungerMod: failed to hook ItemSoup.use (method not found).");
+            Console.WriteLine("HungerMod: failed to locate game types for ItemFood hook.");
         }
         else
         {
-            _itemSoupUseHook = new Hook(itemSoupUseMethod, ItemSoup_Use);
+            MethodInfo? itemFoodUseMethod = gameItemFoodType.GetMethod(
+                "use",
+                BindingFlags.Instance | BindingFlags.Public,
+                binder: null,
+                types: new Type[] { gameItemStackType, gameWorldType, gameEntityPlayerType },
+                modifiers: null);
+
+            if (itemFoodUseMethod is null)
+            {
+                Console.WriteLine("HungerMod: failed to hook ItemFood.use (method not found).");
+            }
+            else
+            {
+                _itemFoodUseHook = new Hook(itemFoodUseMethod, ItemFood_Use);
+            }
         }
 
-        MethodInfo? clientPlayerSendChatMessageMethod = typeof(ClientPlayerEntity).GetMethod(
-            nameof(ClientPlayerEntity.sendChatMessage),
-            BindingFlags.Instance | BindingFlags.Public,
-            binder: null,
-            types: [typeof(string)],
-            modifiers: null);
-        if (clientPlayerSendChatMessageMethod is null)
+        if (gameItemFoodType != null && gameItemStackType != null && gameWorldType != null && gameEntityPlayerType != null)
         {
-            Console.WriteLine("HungerMod: failed to hook ClientPlayerEntity.sendChatMessage (method not found).");
-        }
-        else
-        {
-            _clientPlayerSendChatMessageHook = new Hook(
-                clientPlayerSendChatMessageMethod,
-                ClientPlayerEntity_SendChatMessage);
-        }
+            Type? gameItemSoupType = null;
+            foreach (Assembly asm in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                gameItemSoupType = asm.GetType("BetaSharp.Items.ItemSoup");
+                if (gameItemSoupType != null)
+                {
+                    break;
+                }
+            }
 
-        MethodInfo? entityClientPlayerMPSendChatMessageMethod = typeof(EntityClientPlayerMP).GetMethod(
-            nameof(EntityClientPlayerMP.sendChatMessage),
-            BindingFlags.Instance | BindingFlags.Public,
-            binder: null,
-            types: [typeof(string)],
-            modifiers: null);
-        if (entityClientPlayerMPSendChatMessageMethod is null)
-        {
-            Console.WriteLine("HungerMod: failed to hook EntityClientPlayerMP.sendChatMessage (method not found).");
-        }
-        else
-        {
-            _entityClientPlayerMPSendChatMessageHook = new Hook(
-                entityClientPlayerMPSendChatMessageMethod,
-                EntityClientPlayerMP_SendChatMessage);
+            if (gameItemSoupType == null)
+            {
+                Console.WriteLine("HungerMod: failed to locate ItemSoup type for hook.");
+            }
+            else
+            {
+                MethodInfo? itemSoupUseMethod = gameItemSoupType.GetMethod(
+                    "use",
+                    BindingFlags.Instance | BindingFlags.Public,
+                    binder: null,
+                    types: new Type[] { gameItemStackType, gameWorldType, gameEntityPlayerType },
+                    modifiers: null);
+
+                if (itemSoupUseMethod is null)
+                {
+                    Console.WriteLine("HungerMod: failed to hook ItemSoup.use (method not found).");
+                }
+                else
+                {
+                    _itemSoupUseHook = new Hook(itemSoupUseMethod, ItemSoup_Use);
+                }
+            }
         }
 
         Console.WriteLine("HungerMod: enabled timed food effects.");
@@ -273,6 +360,8 @@ public class HungerModBase : ModBase
         _clientPlayerSendChatMessageHook = null;
         _entityClientPlayerMPSendChatMessageHook?.Dispose();
         _entityClientPlayerMPSendChatMessageHook = null;
+        _playerControllerMPSendUseItemHook?.Dispose();
+        _playerControllerMPSendUseItemHook = null;
         PlayerFoodStates.Clear();
     }
 
@@ -583,8 +672,35 @@ public class HungerModBase : ModBase
             return itemStack;
         }
 
-        ConsumeFoodAndApplyEffects(entityPlayer, itemStack, definition);
-        return itemStack;
+        // (debug logging removed)
+        // Call original to ensure normal consumption behavior (including server packet)
+        int prevHealth = entityPlayer.health;
+        int prevLastHealth = entityPlayer.lastHealth;
+        int prevHearts = entityPlayer.hearts;
+
+        ItemStack resultStack = orig(instance, itemStack, world, entityPlayer);
+
+        // (debug logging removed)
+        // Revert the original heal so our timed food system controls health changes.
+        entityPlayer.health = prevHealth;
+        entityPlayer.lastHealth = prevLastHealth;
+        entityPlayer.hearts = prevHearts;
+
+        // Apply our timed food effects only on the server (authoritative).
+        try
+        {
+            if (world == null || !world.isRemote)
+            {
+                ConsumeFoodAndApplyEffects(entityPlayer, resultStack, definition);
+            }
+        }
+        catch { }
+
+        // Do NOT manually modify the inventory here. The original `use` call
+        // and server-side logic are authoritative for item consumption and
+        // will synchronize the slot to the client. Return the stack returned
+        // by the original method.
+        return resultStack;
     }
 
     private static ItemStack ItemSoup_Use(
@@ -647,6 +763,26 @@ public class HungerModBase : ModBase
         return true;
     }
 
+    private static bool PlayerControllerMP_SendUseItem(
+        Func<object, EntityPlayer, World, ItemStack, bool> orig,
+        object instance,
+        EntityPlayer player,
+        World world,
+        ItemStack itemStack)
+    {
+        try
+        {
+            if (itemStack != null && FoodDefinitions.ContainsKey(itemStack.itemId) && ShouldBlockFoodConsume(player, itemStack.itemId))
+            {
+                return false;
+            }
+        }
+        catch { }
+
+        // Fallback to original
+        return orig(instance, player, world, itemStack);
+    }
+
     private static void ClearFoodEffects(EntityPlayer player)
     {
         PlayerFoodState state = GetOrCreatePlayerFoodState(player);
@@ -667,12 +803,6 @@ public class HungerModBase : ModBase
     {
         PlayerFoodState state = GetOrCreatePlayerFoodState(player);
         int previousMaxHealth = CalculateMaxHealth(state);
-
-        if (stack.count > 0)
-        {
-            --stack.count;
-        }
-
         state.ActiveFoods.Add(new ActiveFoodEffect(stack.itemId, definition.DurationSeconds * TicksPerSecond));
         state.RegenAccumulator = 0.0F;
 
