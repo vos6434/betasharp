@@ -7,17 +7,17 @@ using MonoMod.RuntimeDetour;
 namespace ModMenu;
 
 [ModSide(Side.Client)]
-public class Mod : ModBase
+public class ModMenuBase : ModBase
 {
     public override string Name => "Mod Menu";
-    public override string Description => "Adds a mod menu to the main menu.";
+    public override string Description => "Adds a mod list menu to the game.";
     public override string Author => "vos6434";
-    private const int ButtonMainMenuModMenu = 5;
-    private const int ButtonIngameMenuModMenu = 7;
-    private const int ButtonTexturePacksAndMods = 3;
-    private const int ButtonMainMenuOptions = 0;
-    private const int ButtonQuit = 4;
-    private const int ButtonIngameMenuOptions = 0;
+    private const int ButtonMainMenuModMenuId = 5;
+    private const int ButtonIngameMenuModMenuId = 7;
+    private const int ButtonTexturePacksAndModsId = 3;
+    private const int ButtonMainMenuOptionsId = 0;
+    private const int ButtonQuitId = 4;
+    private const int ButtonIngameMenuOptionsId = 0;
     private static readonly FieldInfo? ControlListField = typeof(GuiScreen)
         .GetField("_controlList", BindingFlags.Instance | BindingFlags.NonPublic);
 
@@ -93,8 +93,7 @@ public class Mod : ModBase
 
     public override void PostInitialize(Side side)
     {
-        Console.WriteLine($"PostInitialize called for Mod Menu. " +
-                          $"Loaded mods: [{string.Join(", ", Mods.ModRegistry.Select(m => m.Name))}]");
+        Console.WriteLine($"PostInitialize called for Mod Menu.");
     }
 
     public override void Unload(Side side)
@@ -122,7 +121,7 @@ public class Mod : ModBase
 
         foreach (GuiButton existingButton in controls)
         {
-            if (existingButton.Id == ButtonMainMenuModMenu)
+            if (existingButton.Id == ButtonMainMenuModMenuId)
             {
                 return;
             }
@@ -131,7 +130,7 @@ public class Mod : ModBase
         GuiButton? modsButton = null;
         foreach (GuiButton existingButton in controls)
         {
-            if (existingButton.Id == ButtonTexturePacksAndMods)
+            if (existingButton.Id == ButtonTexturePacksAndModsId)
             {
                 modsButton = existingButton;
                 break;
@@ -154,12 +153,12 @@ public class Mod : ModBase
             buttonY = instance.Height / 4 + 48 + 96;
         }
 
-        controls.Add(new GuiButton(ButtonMainMenuModMenu, buttonX, buttonY, "Mods"));
+        controls.Add(new GuiButton(ButtonMainMenuModMenuId, buttonX, buttonY, "Mods"));
 
         int optionsRowY = buttonY + 24;
         foreach (GuiButton existingButton in controls)
         {
-            if (existingButton.Id == ButtonMainMenuOptions || existingButton.Id == ButtonQuit)
+            if (existingButton.Id == ButtonMainMenuOptionsId || existingButton.Id == ButtonQuitId)
             {
                 existingButton.YPosition = optionsRowY;
             }
@@ -171,7 +170,7 @@ public class Mod : ModBase
         GuiMainMenu instance,
         GuiButton button)
     {
-        if (button.Id == ButtonMainMenuModMenu)
+        if (button.Id == ButtonMainMenuModMenuId)
         {
             instance.mc.displayGuiScreen(new GuiModListScreen(instance));
             return;
@@ -182,6 +181,7 @@ public class Mod : ModBase
 
     private static void GuiIngameMenu_InitGui(Action<GuiIngameMenu> orig, GuiIngameMenu instance)
     {
+        Console.WriteLine("Initialize called for Ingame Menu");
         orig(instance);
 
         if (ControlListField?.GetValue(instance) is not System.Collections.Generic.List<GuiButton> controls)
@@ -192,7 +192,7 @@ public class Mod : ModBase
 
         foreach (GuiButton existingButton in controls)
         {
-            if (existingButton.Id == ButtonIngameMenuModMenu)
+            if (existingButton.Id == ButtonIngameMenuModMenuId)
             {
                 return;
             }
@@ -201,7 +201,7 @@ public class Mod : ModBase
         GuiButton? optionsButton = null;
         foreach (GuiButton existingButton in controls)
         {
-            if (existingButton.Id == ButtonIngameMenuOptions)
+            if (existingButton.Id == ButtonIngameMenuOptionsId)
             {
                 optionsButton = existingButton;
                 break;
@@ -221,7 +221,7 @@ public class Mod : ModBase
             buttonY = instance.Height / 4 + 56;
         }
 
-        controls.Add(new GuiButton(ButtonIngameMenuModMenu, buttonX, buttonY, "Mods"));
+        controls.Add(new GuiButton(ButtonIngameMenuModMenuId, buttonX, buttonY, "Mods"));
     }
 
     private static void GuiIngameMenu_ActionPerformed(
@@ -229,7 +229,7 @@ public class Mod : ModBase
         GuiIngameMenu instance,
         GuiButton button)
     {
-        if (button.Id == ButtonIngameMenuModMenu)
+        if (button.Id == ButtonIngameMenuModMenuId)
         {
             instance.mc.displayGuiScreen(new GuiModListScreen(instance));
             return;

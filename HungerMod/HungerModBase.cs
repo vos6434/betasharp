@@ -18,7 +18,7 @@ using Silk.NET.OpenGL.Legacy;
 namespace HungerMod;
 
 [ModSide(Side.Client)]
-public class Mod : ModBase
+public class HungerModBase : ModBase
 {
     private const int BaseMaxHealth = 20;
     private const int AbsoluteMaxHealth = 40;
