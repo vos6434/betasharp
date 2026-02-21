@@ -4,6 +4,7 @@ using BetaSharp.Blocks.Materials;
 using BetaSharp.Client;
 using BetaSharp.Client.Entities;
 using BetaSharp.Client.Guis;
+using BetaSharp.Client.Input;
 using BetaSharp.Client.Network;
 using BetaSharp.Client.Rendering.Core;
 using BetaSharp.Client.Rendering.Items;
@@ -65,10 +66,18 @@ public class HungerModBase : ModBase
     private Hook? _clientPlayerSendChatMessageHook;
     private Hook? _entityClientPlayerMPSendChatMessageHook;
     private Hook? _playerControllerMPSendUseItemHook;
+    private Hook? _guiModsRenderHook;
 
     public override string Name => "Hunger Mod";
     public override string Description => "Valheim-style timed food buffs for health and regeneration.";
     public override string Author => "vos6434";
+    public override bool HasOptionsMenu => true;
+
+    public override void OpenOptionsMenu()
+    {
+        var parent = Minecraft.INSTANCE?.currentScreen;
+        Minecraft.INSTANCE?.displayGuiScreen(new HungerModOptionsGui(parent));
+    }
 
     public override void Initialize(Side side)
     {
@@ -206,6 +215,23 @@ public class HungerModBase : ModBase
                     clientPlayerSendChatMessageMethod,
                     ClientPlayerEntity_SendChatMessage);
             }
+
+            // Hook GuiMods.Render to enable/disable the Mod Options button for mods that expose options.
+            try
+            {
+                MethodInfo? guiModsRenderMethod = typeof(GuiMods).GetMethod(
+                    nameof(GuiMods.Render),
+                    BindingFlags.Instance | BindingFlags.Public,
+                    binder: null,
+                    types: new Type[] { typeof(int), typeof(int), typeof(float) },
+                    modifiers: null);
+
+                if (guiModsRenderMethod != null)
+                {
+                    _guiModsRenderHook = new Hook(guiModsRenderMethod, (Action<Action<GuiMods, int, int, float>, GuiMods, int, int, float>)GuiMods_Render);
+                }
+            }
+            catch { }
 
             MethodInfo? entityClientPlayerMPSendChatMessageMethod = typeof(EntityClientPlayerMP).GetMethod(
                 nameof(EntityClientPlayerMP.sendChatMessage),
@@ -363,6 +389,8 @@ public class HungerModBase : ModBase
         _entityClientPlayerMPSendChatMessageHook = null;
         _playerControllerMPSendUseItemHook?.Dispose();
         _playerControllerMPSendUseItemHook = null;
+        _guiModsRenderHook?.Dispose();
+        _guiModsRenderHook = null;
         PlayerFoodStates.Clear();
     }
 
@@ -754,14 +782,30 @@ public class HungerModBase : ModBase
         }
 
         string[] parts = message.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length == 0 || !parts[0].Equals("/clearhunger", StringComparison.OrdinalIgnoreCase))
+        if (parts.Length == 0) return false;
+
+        // /clearhunger - clears active food effects
+        if (parts[0].Equals("/clearhunger", StringComparison.OrdinalIgnoreCase))
         {
-            return false;
+            ClearFoodEffects(player);
+            AddPlayerChatMessage(player, "HungerMod: cleared active food effects.");
+            return true;
         }
 
-        ClearFoodEffects(player);
-        AddPlayerChatMessage(player, "HungerMod: cleared active food effects.");
-        return true;
+        // /hungeroptions - open the Hunger Mod options screen (client-side)
+        if (parts[0].Equals("/hungeroptions", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                Minecraft? mc = Minecraft.INSTANCE;
+                mc?.displayGuiScreen(new HungerModOptionsGui(mc?.currentScreen));
+            }
+            catch { }
+
+            return true;
+        }
+
+        return false;
     }
 
     private static bool PlayerControllerMP_SendUseItem(
@@ -925,6 +969,38 @@ public class HungerModBase : ModBase
         {
             player.hearts = player.maxHealth;
         }
+    }
+
+    private static void GuiMods_Render(Action<GuiMods, int, int, float> orig, GuiMods instance, int mouseX, int mouseY, float partialTicks)
+    {
+        try
+        {
+            FieldInfo? optionsField = typeof(GuiMods).GetField("_optionsButton", BindingFlags.Instance | BindingFlags.NonPublic);
+            FieldInfo? modListField = typeof(GuiMods).GetField("_modList", BindingFlags.Instance | BindingFlags.NonPublic);
+            if (optionsField != null && modListField != null)
+            {
+                GuiButton? optionsBtn = optionsField.GetValue(instance) as GuiButton;
+                object? modListObj = modListField.GetValue(instance);
+                int sel = -1;
+                if (modListObj != null)
+                {
+                    FieldInfo? selField = modListObj.GetType().GetField("SelectedIndex", BindingFlags.Instance | BindingFlags.Public);
+                    if (selField != null)
+                    {
+                        sel = (int)(selField.GetValue(modListObj) ?? -1);
+                    }
+                }
+
+                if (optionsBtn != null)
+                {
+                    bool enabled = sel != -1 && sel >= 0 && sel < Mods.ModRegistry.Count && Mods.ModRegistry[sel].HasOptionsMenu;
+                    optionsBtn.Enabled = enabled;
+                }
+            }
+        }
+        catch { }
+
+        orig(instance, mouseX, mouseY, partialTicks);
     }
 
     private static int CalculateMaxHealth(PlayerFoodState state)
@@ -1244,4 +1320,168 @@ public class HungerModBase : ModBase
     }
 
     private readonly record struct FoodDefinition(int BonusHealth, float RegenPerSecond, int DurationSeconds);
+    private class HungerModOptionsGui : GuiScreen
+    {
+        private const int ButtonSave = 0;
+        private const int ButtonCancel = 1;
+
+        private readonly GuiScreen? _parentScreen;
+        private GuiTextField? _txtExtraCount;
+        private GuiTextField? _txtBoxSize;
+        private GuiTextField? _txtIconSize;
+        private GuiTextField? _txtBoxSpacing;
+        private string _screenTitle = "Hunger Mod Options";
+
+        public HungerModOptionsGui(GuiScreen? parent)
+        {
+            _parentScreen = parent;
+        }
+
+        public override void UpdateScreen()
+        {
+            _txtExtraCount?.updateCursorCounter();
+            _txtBoxSize?.updateCursorCounter();
+            _txtIconSize?.updateCursorCounter();
+            _txtBoxSpacing?.updateCursorCounter();
+        }
+
+        public override void InitGui()
+        {
+            Keyboard.enableRepeatEvents(true);
+
+            int centerX = Width / 2;
+            int centerY = Height / 4;
+
+            _screenTitle = "Hunger Mod Options";
+
+            _txtExtraCount = new GuiTextField(this, FontRenderer, centerX - 100, centerY - 30, 200, 20, ExtraHudBoxCount.ToString()) { IsFocused = false };
+            _txtBoxSize = new GuiTextField(this, FontRenderer, centerX - 100, centerY, 200, 20, ExtraHudBoxSize.ToString());
+            _txtIconSize = new GuiTextField(this, FontRenderer, centerX - 100, centerY + 30, 200, 20, HudItemIconSize.ToString());
+            _txtBoxSpacing = new GuiTextField(this, FontRenderer, centerX - 100, centerY + 60, 200, 20, ExtraHudBoxSpacing.ToString());
+
+            _controlList.Clear();
+            _controlList.Add(new GuiButton(ButtonSave, centerX - 100, centerY + 100, "Save"));
+            _controlList.Add(new GuiButton(ButtonCancel, centerX - 100, centerY + 124, "Cancel"));
+        }
+
+        protected override void ActionPerformed(GuiButton button)
+        {
+            if (!button.Enabled) return;
+
+            switch (button.Id)
+            {
+                case ButtonCancel:
+                    mc.displayGuiScreen(_parentScreen);
+                    break;
+                case ButtonSave:
+                    {
+                        int extraCount = ExtraHudBoxCount;
+                        int boxSize = ExtraHudBoxSize;
+                        int iconSize = HudItemIconSize;
+                        int boxSpacing = ExtraHudBoxSpacing;
+
+                        if (_txtExtraCount != null && int.TryParse(_txtExtraCount.GetText(), out int v1)) extraCount = Math.Max(1, v1);
+                        if (_txtBoxSize != null && int.TryParse(_txtBoxSize.GetText(), out int v2)) boxSize = Math.Max(8, v2);
+                        if (_txtIconSize != null && int.TryParse(_txtIconSize.GetText(), out int v3)) iconSize = Math.Clamp(v3, 1, boxSize);
+                        if (_txtBoxSpacing != null && int.TryParse(_txtBoxSpacing.GetText(), out int v4)) boxSpacing = Math.Max(0, v4);
+
+                        HungerModConfig config = new HungerModConfig
+                        {
+                            ExtraHudBoxCount = extraCount,
+                            ExtraHudBoxSize = boxSize,
+                            HudItemIconSize = iconSize,
+                            ExtraHudBoxSpacing = boxSpacing,
+                            FoodDefinitions = new List<FoodDefinitionConfig>()
+                        };
+
+                        foreach (var kv in FoodDefinitions.OrderBy(k => k.Key))
+                        {
+                            var def = kv.Value;
+                            config.FoodDefinitions.Add(new FoodDefinitionConfig
+                            {
+                                ItemId = kv.Key,
+                                BonusHealth = def.BonusHealth,
+                                RegenPerSecond = def.RegenPerSecond,
+                                DurationSeconds = def.DurationSeconds
+                            });
+                        }
+
+                        bool normalized = ApplyConfig(config);
+                        string configPath = Path.Combine(Mods.ConfigFolder, ConfigFileName);
+                        WriteConfig(configPath, config);
+                        mc.displayGuiScreen(_parentScreen);
+                        break;
+                    }
+            }
+        }
+
+        protected override void KeyTyped(char eventChar, int eventKey)
+        {
+            if (_txtExtraCount != null && _txtExtraCount.IsFocused) _txtExtraCount.textboxKeyTyped(eventChar, eventKey);
+            else if (_txtBoxSize != null && _txtBoxSize.IsFocused) _txtBoxSize.textboxKeyTyped(eventChar, eventKey);
+            else if (_txtIconSize != null && _txtIconSize.IsFocused) _txtIconSize.textboxKeyTyped(eventChar, eventKey);
+            else if (_txtBoxSpacing != null && _txtBoxSpacing.IsFocused) _txtBoxSpacing.textboxKeyTyped(eventChar, eventKey);
+
+            if (eventChar == 13)
+            {
+                ActionPerformed(_controlList[0]);
+            }
+        }
+
+        protected override void MouseClicked(int x, int y, int button)
+        {
+            base.MouseClicked(x, y, button);
+            _txtExtraCount?.MouseClicked(x, y, button);
+            _txtBoxSize?.MouseClicked(x, y, button);
+            _txtIconSize?.MouseClicked(x, y, button);
+            _txtBoxSpacing?.MouseClicked(x, y, button);
+        }
+
+        public override void Render(int mouseX, int mouseY, float partialTicks)
+        {
+            DrawDefaultBackground();
+            DrawCenteredString(FontRenderer, _screenTitle, Width / 2, 20, 0xFFFFFF);
+
+            int centerX = Width / 2;
+            int centerY = Height / 4;
+
+            DrawString(FontRenderer, "Extra HUD Box Count:", centerX - 100, centerY - 40, 0xA0A0A0);
+            DrawString(FontRenderer, "Extra HUD Box Size:", centerX - 100, centerY - 10, 0xA0A0A0);
+            DrawString(FontRenderer, "HUD Item Icon Size:", centerX - 100, centerY + 20, 0xA0A0A0);
+            DrawString(FontRenderer, "Extra HUD Box Spacing:", centerX - 100, centerY + 50, 0xA0A0A0);
+
+            _txtExtraCount?.DrawTextBox();
+            _txtBoxSize?.DrawTextBox();
+            _txtIconSize?.DrawTextBox();
+            _txtBoxSpacing?.DrawTextBox();
+
+            base.Render(mouseX, mouseY, partialTicks);
+        }
+
+        public override void SelectNextField()
+        {
+            if (_txtExtraCount != null && _txtExtraCount.IsFocused)
+            {
+                _txtExtraCount.SetFocused(false);
+                _txtBoxSize?.SetFocused(true);
+            }
+            else if (_txtBoxSize != null && _txtBoxSize.IsFocused)
+            {
+                _txtBoxSize.SetFocused(false);
+                _txtIconSize?.SetFocused(true);
+            }
+            else if (_txtIconSize != null && _txtIconSize.IsFocused)
+            {
+                _txtIconSize.SetFocused(false);
+                _txtBoxSpacing?.SetFocused(true);
+            }
+            else
+            {
+                _txtExtraCount?.SetFocused(true);
+                _txtBoxSize?.SetFocused(false);
+                _txtIconSize?.SetFocused(false);
+                _txtBoxSpacing?.SetFocused(false);
+            }
+        }
+    }
 }

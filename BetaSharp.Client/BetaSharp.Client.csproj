@@ -18,17 +18,7 @@
       <PackageReference Include="SixLabors.ImageSharp.Drawing" Version="2.1.7" />
     </ItemGroup>
 
-    <Target Name="BuildModMenuForDebug"
-            AfterTargets="Build"
-            Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipModMenuPrebuild)' != 'true' and Exists('..\ModMenu\ModMenu.csproj')">
-      <Message Importance="high" Text="Rebuilding ModMenu before launch..." />
-      <MSBuild Projects="..\ModMenu\ModMenu.csproj"
-               Targets="Rebuild"
-               Properties="Configuration=$(Configuration);Platform=$(Platform);BuildProjectReferences=false;SkipModMenuPrebuild=true"
-               ContinueOnError="WarnAndContinue" />
-      <Error Condition="'$(MSBuildLastTaskResult)' != 'true'"
-             Text="ModMenu build failed. Launch canceled. Check the build output for ModMenu errors." />
-    </Target>
+    <!-- External mod prebuild target removed -->
 
     <Target Name="BuildHungerModForDebug"
             AfterTargets="Build"
