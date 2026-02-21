@@ -3,8 +3,11 @@ using BetaSharp.Blocks.Materials;
 using BetaSharp.Client;
 using BetaSharp.Client.Guis;
 using BetaSharp.Client.Rendering.Core;
+using BetaSharp.Client.Rendering.Items;
 using BetaSharp.Entities;
+using BetaSharp.Items;
 using BetaSharp.Modding;
+using BetaSharp.Worlds;
 using MonoMod.RuntimeDetour;
 using Silk.NET.OpenGL.Legacy;
 
@@ -15,15 +18,18 @@ public class Mod : IMod
 {
     private const int DoubledMaxHealth = 40;
     private const int ExtraHudBoxCount = 3;
-    private const int ExtraHudBoxSize = 18;
+    private const int ExtraHudBoxSize = 17;
     private const int ExtraHudBoxSpacing = 2;
+    private static readonly ItemRenderer HudItemRenderer = new();
+    private static readonly List<int> RecentFoodItemIds = [];
     private static readonly FieldInfo? GuiIngameMcField = typeof(GuiIngame)
         .GetField("_mc", BindingFlags.Instance | BindingFlags.NonPublic);
 
     private Hook? _entityPlayerTickMovementHook;
     private Hook? _entityPlayerTeleportToTopHook;
     private Hook? _entityLivingHealHook;
-    private Hook? _guiIngameRenderGameOverlayHook;
+    private Hook? _guiIngameRenderInventorySlotHook;
+    private Hook? _itemFoodUseHook;
 
     public string Name => "Hunger Mod";
     public string Description => "Gives players 20 hearts (40 health).";
@@ -77,19 +83,34 @@ public class Mod : IMod
             _entityLivingHealHook = new Hook(livingHealMethod, EntityLiving_Heal);
         }
 
-        MethodInfo? guiRenderOverlayMethod = typeof(GuiIngame).GetMethod(
-            nameof(GuiIngame.renderGameOverlay),
-            BindingFlags.Instance | BindingFlags.Public,
+        MethodInfo? guiRenderInventorySlotMethod = typeof(GuiIngame).GetMethod(
+            "renderInventorySlot",
+            BindingFlags.Instance | BindingFlags.NonPublic,
             binder: null,
-            types: [typeof(float), typeof(bool), typeof(int), typeof(int)],
+            types: [typeof(int), typeof(int), typeof(int), typeof(float)],
             modifiers: null);
-        if (guiRenderOverlayMethod is null)
+        if (guiRenderInventorySlotMethod is null)
         {
-            Console.WriteLine("HungerMod: failed to hook GuiIngame.renderGameOverlay (method not found).");
+            Console.WriteLine("HungerMod: failed to hook GuiIngame.renderInventorySlot (method not found).");
         }
         else
         {
-            _guiIngameRenderGameOverlayHook = new Hook(guiRenderOverlayMethod, GuiIngame_RenderGameOverlay);
+            _guiIngameRenderInventorySlotHook = new Hook(guiRenderInventorySlotMethod, GuiIngame_RenderInventorySlot);
+        }
+
+        MethodInfo? itemFoodUseMethod = typeof(ItemFood).GetMethod(
+            nameof(ItemFood.use),
+            BindingFlags.Instance | BindingFlags.Public,
+            binder: null,
+            types: [typeof(ItemStack), typeof(World), typeof(EntityPlayer)],
+            modifiers: null);
+        if (itemFoodUseMethod is null)
+        {
+            Console.WriteLine("HungerMod: failed to hook ItemFood.use (method not found).");
+        }
+        else
+        {
+            _itemFoodUseHook = new Hook(itemFoodUseMethod, ItemFood_Use);
         }
 
         Console.WriteLine("HungerMod: enabled 20-heart player health.");
@@ -107,8 +128,11 @@ public class Mod : IMod
         _entityPlayerTeleportToTopHook = null;
         _entityLivingHealHook?.Dispose();
         _entityLivingHealHook = null;
-        _guiIngameRenderGameOverlayHook?.Dispose();
-        _guiIngameRenderGameOverlayHook = null;
+        _guiIngameRenderInventorySlotHook?.Dispose();
+        _guiIngameRenderInventorySlotHook = null;
+        _itemFoodUseHook?.Dispose();
+        _itemFoodUseHook = null;
+        RecentFoodItemIds.Clear();
     }
 
     private static void EntityPlayer_TickMovement(
@@ -157,25 +181,28 @@ public class Mod : IMod
         player.hearts = player.maxHealth / 2;
     }
 
-    private static void GuiIngame_RenderGameOverlay(
-        Action<GuiIngame, float, bool, int, int> orig,
+    private static void GuiIngame_RenderInventorySlot(
+        Action<GuiIngame, int, int, int, float> orig,
         GuiIngame instance,
-        float partialTicks,
-        bool unusedFlag,
-        int unusedA,
-        int unusedB)
+        int slotIndex,
+        int x,
+        int y,
+        float partialTicks)
     {
-        orig(instance, partialTicks, unusedFlag, unusedA, unusedB);
-
-        if (GuiIngameMcField?.GetValue(instance) is not Minecraft mc || mc.player is null)
+        if (slotIndex == 0 &&
+            GuiIngameMcField?.GetValue(instance) is Minecraft mc &&
+            mc.player is not null &&
+            mc.playerController.shouldDrawHUD() &&
+            mc.player.maxHealth > 20)
         {
-            return;
+            RenderExtraHealthHud(instance, mc);
         }
 
-        if (!mc.playerController.shouldDrawHUD() || mc.player.maxHealth <= 20)
-        {
-            return;
-        }
+        orig(instance, slotIndex, x, y, partialTicks);
+    }
+
+    private static void RenderExtraHealthHud(GuiIngame instance, Minecraft mc)
+    {
 
         int extraMaxHealth = mc.player.maxHealth - 20;
         int extraHealth = Math.Clamp(mc.player.health - 20, 0, extraMaxHealth);
@@ -191,7 +218,7 @@ public class Mod : IMod
         int scaledWidth = scaled.ScaledWidth;
         int scaledHeight = scaled.ScaledHeight;
         int armorValue = mc.player.getPlayerArmorValue();
-        DrawExtraHudBoxes(scaledWidth, scaledHeight, armorValue);
+        DrawExtraHudBoxes(mc, scaledWidth, scaledHeight, armorValue);
 
         bool heartBlink = mc.player.hearts / 3 % 2 == 1;
         if (mc.player.hearts < 10)
@@ -243,7 +270,7 @@ public class Mod : IMod
         }
     }
 
-    private static void DrawExtraHudBoxes(int scaledWidth, int scaledHeight, int armorValue)
+    private static void DrawExtraHudBoxes(Minecraft mc, int scaledWidth, int scaledHeight, int armorValue)
     {
         int hudRightX = scaledWidth / 2 + 91;
         int totalWidth = ExtraHudBoxCount * ExtraHudBoxSize + (ExtraHudBoxCount - 1) * ExtraHudBoxSpacing;
@@ -260,6 +287,23 @@ public class Mod : IMod
             int x = boxStartX + i * (ExtraHudBoxSize + ExtraHudBoxSpacing);
             DrawHudBox(x, boxY);
         }
+
+        for (int i = 0; i < RecentFoodItemIds.Count && i < ExtraHudBoxCount; i++)
+        {
+            int itemId = RecentFoodItemIds[i];
+            if (itemId < 0 || itemId >= Item.ITEMS.Length || Item.ITEMS[itemId] is null)
+            {
+                continue;
+            }
+
+            int iconX = boxStartX + i * (ExtraHudBoxSize + ExtraHudBoxSpacing) + 1;
+            int iconY = boxY + 1;
+            ItemStack iconStack = new(itemId, 1);
+            HudItemRenderer.renderItemIntoGUI(mc.fontRenderer, mc.textureManager, iconStack, iconX, iconY);
+        }
+
+        GLManager.GL.Enable(GLEnum.Texture2D);
+        GLManager.GL.Color4(1.0F, 1.0F, 1.0F, 1.0F);
     }
 
     private static void DrawHudBox(int x, int y)
@@ -290,6 +334,7 @@ public class Mod : IMod
 
         GLManager.GL.Enable(GLEnum.Texture2D);
         GLManager.GL.Disable(GLEnum.Blend);
+        GLManager.GL.Color4(1.0F, 1.0F, 1.0F, 1.0F);
     }
 
     private static void ApplyDoubleHealthProfile(EntityPlayer player, bool fillToMax)
@@ -312,5 +357,30 @@ public class Mod : IMod
                 player.lastHealth = DoubledMaxHealth;
             }
         }
+    }
+
+    private static ItemStack ItemFood_Use(
+        Func<ItemFood, ItemStack, World, EntityPlayer, ItemStack> orig,
+        ItemFood instance,
+        ItemStack itemStack,
+        World world,
+        EntityPlayer entityPlayer)
+    {
+        int foodItemId = itemStack.itemId;
+        int countBefore = itemStack.count;
+
+        ItemStack result = orig(instance, itemStack, world, entityPlayer);
+        int countAfter = result?.count ?? itemStack.count;
+
+        if (countAfter < countBefore && !RecentFoodItemIds.Contains(foodItemId))
+        {
+            RecentFoodItemIds.Add(foodItemId);
+            while (RecentFoodItemIds.Count > ExtraHudBoxCount)
+            {
+                RecentFoodItemIds.RemoveAt(0);
+            }
+        }
+
+        return result;
     }
 }
