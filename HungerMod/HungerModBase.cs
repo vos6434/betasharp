@@ -41,16 +41,17 @@ public class HungerModBase : ModBase
         PropertyNameCaseInsensitive = true
     };
 
-    // Client-only reflection/rendering fields — initialize when running on client.
-    private static ItemRenderer? HudItemRenderer = null;
-    private static FieldInfo? GuiIngameMcField = null;
-    private static FieldInfo? ClientPlayerMcField = null;
-    private static int ExtraHudBoxCount = DefaultExtraHudBoxCount;
-    private static int ExtraHudBoxSize = DefaultExtraHudBoxSize;
+    // Removed unused method PlayerHasActiveFood
     private static int HudItemIconSize = DefaultHudItemIconSize;
     private static int ExtraHudBoxSpacing = DefaultExtraHudBoxSpacing;
     private static Dictionary<int, FoodDefinition> FoodDefinitions = CreateDefaultFoodDefinitions();
-    private static readonly Dictionary<EntityPlayer, PlayerFoodState> PlayerFoodStates = [];
+    private static readonly Dictionary<EntityPlayer, PlayerFoodState> PlayerFoodStates = new Dictionary<EntityPlayer, PlayerFoodState>();
+
+    private static ItemRenderer? HudItemRenderer;
+    private static FieldInfo? GuiIngameMcField;
+    private static FieldInfo? ClientPlayerMcField;
+    private static int ExtraHudBoxCount = DefaultExtraHudBoxCount;
+    private static int ExtraHudBoxSize = DefaultExtraHudBoxSize;
 
     private Hook? _entityPlayerTickMovementHook;
     private Hook? _entityPlayerTeleportToTopHook;
@@ -115,7 +116,7 @@ public class HungerModBase : ModBase
             nameof(EntityLiving.heal),
             BindingFlags.Instance | BindingFlags.Public,
             binder: null,
-            types: [typeof(int)],
+            types: new Type[] { typeof(int) },
             modifiers: null);
         if (livingHealMethod is null)
         {
@@ -130,7 +131,7 @@ public class HungerModBase : ModBase
             nameof(EntityPlayer.readNbt),
             BindingFlags.Instance | BindingFlags.Public,
             binder: null,
-            types: [typeof(NBTTagCompound)],
+            types: new Type[] { typeof(NBTTagCompound) },
             modifiers: null);
         if (playerReadNbtMethod is null)
         {
@@ -145,7 +146,7 @@ public class HungerModBase : ModBase
             nameof(EntityPlayer.writeNbt),
             BindingFlags.Instance | BindingFlags.Public,
             binder: null,
-            types: [typeof(NBTTagCompound)],
+            types: new Type[] { typeof(NBTTagCompound) },
             modifiers: null);
         if (playerWriteNbtMethod is null)
         {
@@ -163,7 +164,7 @@ public class HungerModBase : ModBase
                 "renderInventorySlot",
                 BindingFlags.Instance | BindingFlags.NonPublic,
                 binder: null,
-                types: [typeof(int), typeof(int), typeof(int), typeof(float)],
+                types: new Type[] { typeof(int), typeof(int), typeof(int), typeof(float) },
                 modifiers: null);
             if (guiRenderInventorySlotMethod is null)
             {
@@ -178,7 +179,7 @@ public class HungerModBase : ModBase
                 nameof(GuiIngame.renderGameOverlay),
                 BindingFlags.Instance | BindingFlags.Public,
                 binder: null,
-                types: [typeof(float), typeof(bool), typeof(int), typeof(int)],
+                types: new Type[] { typeof(float), typeof(bool), typeof(int), typeof(int) },
                 modifiers: null);
             if (guiRenderGameOverlayMethod is null)
             {
@@ -193,7 +194,7 @@ public class HungerModBase : ModBase
                 nameof(ClientPlayerEntity.sendChatMessage),
                 BindingFlags.Instance | BindingFlags.Public,
                 binder: null,
-                types: [typeof(string)],
+                types: new Type[] { typeof(string) },
                 modifiers: null);
             if (clientPlayerSendChatMessageMethod is null)
             {
@@ -210,7 +211,7 @@ public class HungerModBase : ModBase
                 nameof(EntityClientPlayerMP.sendChatMessage),
                 BindingFlags.Instance | BindingFlags.Public,
                 binder: null,
-                types: [typeof(string)],
+                types: new Type[] { typeof(string) },
                 modifiers: null);
             if (entityClientPlayerMPSendChatMessageMethod is null)
             {
