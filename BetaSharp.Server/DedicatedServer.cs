@@ -69,6 +69,8 @@ public class DedicatedServer(IServerConfiguration config) : MinecraftServer(conf
         Log.Initialize(new LogOptions(IsServer: true));
         Log.AddCrashHandlers();
 
+        Mods.LoadMods("./mods", Side.Server);
+
         try
         {
             if (!JarValidator.ValidateJar("b1.7.3.jar"))
