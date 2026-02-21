@@ -644,6 +644,7 @@ public partial class Minecraft
         {
             crashCleanup();
             onMinecraftCrash(unexpectedException);
+            if (Debugger.IsAttached) throw;
         }
         finally
         {
