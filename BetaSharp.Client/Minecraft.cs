@@ -174,7 +174,7 @@ public partial class Minecraft
 
         mcDataDir = getMinecraftDir();
 
-        Mods.LoadMods(mcDataDir.getAbsolutePath(), Side.Client);
+        Mods.LoadMods(mcDataDir.getAbsolutePath(), Side.Both);
 
         saveLoader = new RegionWorldStorageSource(new java.io.File(mcDataDir, "saves"));
         options = new GameOptions(this, mcDataDir.getAbsolutePath());
