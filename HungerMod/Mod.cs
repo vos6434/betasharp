@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text.Json;
 using BetaSharp.Blocks.Materials;
 using BetaSharp.Client;
 using BetaSharp.Client.Entities;
@@ -24,21 +25,32 @@ public class Mod : ModBase
     private const int TicksPerSecond = 20;
     private const int LowTimeThresholdTicks = 30 * TicksPerSecond;
     private const int LowTimeBlinkPeriodTicks = 8;
-    private const int ExtraHudBoxCount = 3;
-    private const int ExtraHudBoxSize = 16;
-    private const int HudItemIconSize = 16;
-    private const int ExtraHudBoxSpacing = 2;
+    private const int DefaultExtraHudBoxCount = 3;
+    private const int DefaultExtraHudBoxSize = 16;
+    private const int DefaultHudItemIconSize = 16;
+    private const int DefaultExtraHudBoxSpacing = 2;
+    private const string ConfigFileName = "HungerMod.json";
     private const string FoodsNbtKey = "HungerModFoods";
     private const string RegenNbtKey = "HungerModRegen";
     private const string FoodItemIdNbtKey = "ItemId";
     private const string FoodTicksNbtKey = "Ticks";
+
+    private static readonly JsonSerializerOptions ConfigJsonOptions = new()
+    {
+        WriteIndented = true,
+        PropertyNameCaseInsensitive = true
+    };
 
     private static readonly ItemRenderer HudItemRenderer = new();
     private static readonly FieldInfo? GuiIngameMcField = typeof(GuiIngame)
         .GetField("_mc", BindingFlags.Instance | BindingFlags.NonPublic);
     private static readonly FieldInfo? ClientPlayerMcField = typeof(ClientPlayerEntity)
         .GetField("mc", BindingFlags.Instance | BindingFlags.NonPublic);
-    private static readonly Dictionary<int, FoodDefinition> FoodDefinitions = CreateFoodDefinitions();
+    private static int ExtraHudBoxCount = DefaultExtraHudBoxCount;
+    private static int ExtraHudBoxSize = DefaultExtraHudBoxSize;
+    private static int HudItemIconSize = DefaultHudItemIconSize;
+    private static int ExtraHudBoxSpacing = DefaultExtraHudBoxSpacing;
+    private static Dictionary<int, FoodDefinition> FoodDefinitions = CreateDefaultFoodDefinitions();
     private static readonly Dictionary<EntityPlayer, PlayerFoodState> PlayerFoodStates = [];
 
     private Hook? _entityPlayerTickMovementHook;
@@ -59,6 +71,8 @@ public class Mod : ModBase
 
     public override void Initialize(Side side)
     {
+        LoadConfig();
+
         MethodInfo? playerTickMovementMethod = typeof(EntityPlayer).GetMethod(
             nameof(EntityPlayer.tickMovement),
             BindingFlags.Instance | BindingFlags.Public,
@@ -896,13 +910,11 @@ public class Mod : ModBase
         return item.getStatName();
     }
 
-    private static Dictionary<int, FoodDefinition> CreateFoodDefinitions()
+    private static Dictionary<int, FoodDefinition> CreateDefaultFoodDefinitions()
     {
         return new Dictionary<int, FoodDefinition>
         {
             // FoodDefinition(BonusHealth, RegenPerSecond, DurationSeconds).
-            // These values are tiered for gameplay balance: snacks are low/short, cooked meals are medium/high and longer,
-            // and Golden Apple is the top-tier outlier (large health boost, high regen, longest duration).
             [Item.Apple.id] = new FoodDefinition(2, 0.5F, 120),
             [Item.MushroomStew.id] = new FoodDefinition(6, 1.5F, 240),
             [Item.Bread.id] = new FoodDefinition(4, 1.0F, 180),
@@ -915,6 +927,162 @@ public class Mod : ModBase
         };
     }
 
+    private void LoadConfig()
+    {
+        string configPath = Path.Combine(Mods.ConfigFolder, ConfigFileName);
+        HungerModConfig config = CreateDefaultConfig();
+        bool shouldWrite = false;
+
+        if (File.Exists(configPath))
+        {
+            try
+            {
+                string json = File.ReadAllText(configPath);
+                HungerModConfig? loaded = JsonSerializer.Deserialize<HungerModConfig>(json, ConfigJsonOptions);
+                if (loaded is null)
+                {
+                    Console.WriteLine($"HungerMod: config '{configPath}' is empty or invalid. Using defaults.");
+                    shouldWrite = true;
+                }
+                else
+                {
+                    config = loaded;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"HungerMod: failed to read config '{configPath}': {ex.Message}. Using defaults.");
+                shouldWrite = true;
+            }
+        }
+        else
+        {
+            shouldWrite = true;
+        }
+
+        bool normalized = ApplyConfig(config);
+        if (shouldWrite || normalized)
+        {
+            WriteConfig(configPath, config);
+        }
+    }
+
+    private static HungerModConfig CreateDefaultConfig()
+    {
+        HungerModConfig config = new()
+        {
+            ExtraHudBoxCount = DefaultExtraHudBoxCount,
+            ExtraHudBoxSize = DefaultExtraHudBoxSize,
+            HudItemIconSize = DefaultHudItemIconSize,
+            ExtraHudBoxSpacing = DefaultExtraHudBoxSpacing,
+            FoodDefinitions = []
+        };
+
+        foreach ((int itemId, FoodDefinition definition) in CreateDefaultFoodDefinitions().OrderBy(pair => pair.Key))
+        {
+            config.FoodDefinitions.Add(new FoodDefinitionConfig
+            {
+                ItemId = itemId,
+                BonusHealth = definition.BonusHealth,
+                RegenPerSecond = definition.RegenPerSecond,
+                DurationSeconds = definition.DurationSeconds
+            });
+        }
+
+        return config;
+    }
+
+    private static bool ApplyConfig(HungerModConfig config)
+    {
+        bool normalized = false;
+
+        int hudCount = Math.Max(1, config.ExtraHudBoxCount);
+        if (hudCount != config.ExtraHudBoxCount)
+        {
+            config.ExtraHudBoxCount = hudCount;
+            normalized = true;
+        }
+
+        int hudBoxSize = Math.Max(8, config.ExtraHudBoxSize);
+        if (hudBoxSize != config.ExtraHudBoxSize)
+        {
+            config.ExtraHudBoxSize = hudBoxSize;
+            normalized = true;
+        }
+
+        int iconSize = Math.Clamp(config.HudItemIconSize, 1, hudBoxSize);
+        if (iconSize != config.HudItemIconSize)
+        {
+            config.HudItemIconSize = iconSize;
+            normalized = true;
+        }
+
+        int boxSpacing = Math.Max(0, config.ExtraHudBoxSpacing);
+        if (boxSpacing != config.ExtraHudBoxSpacing)
+        {
+            config.ExtraHudBoxSpacing = boxSpacing;
+            normalized = true;
+        }
+
+        Dictionary<int, FoodDefinition> foods = [];
+        List<FoodDefinitionConfig>? foodConfigs = config.FoodDefinitions;
+        if (foodConfigs is not null)
+        {
+            foreach (FoodDefinitionConfig foodConfig in foodConfigs)
+            {
+                if (foodConfig.ItemId < 0 || foodConfig.ItemId >= Item.ITEMS.Length || Item.ITEMS[foodConfig.ItemId] is null)
+                {
+                    normalized = true;
+                    continue;
+                }
+
+                int bonusHealth = Math.Max(0, foodConfig.BonusHealth);
+                float regenPerSecond = Math.Max(0.0F, foodConfig.RegenPerSecond);
+                int durationSeconds = Math.Max(1, foodConfig.DurationSeconds);
+
+                if (bonusHealth != foodConfig.BonusHealth ||
+                    regenPerSecond != foodConfig.RegenPerSecond ||
+                    durationSeconds != foodConfig.DurationSeconds)
+                {
+                    foodConfig.BonusHealth = bonusHealth;
+                    foodConfig.RegenPerSecond = regenPerSecond;
+                    foodConfig.DurationSeconds = durationSeconds;
+                    normalized = true;
+                }
+
+                foods[foodConfig.ItemId] = new FoodDefinition(bonusHealth, regenPerSecond, durationSeconds);
+            }
+        }
+
+        if (foods.Count == 0)
+        {
+            foods = CreateDefaultFoodDefinitions();
+            config.FoodDefinitions = CreateDefaultConfig().FoodDefinitions;
+            normalized = true;
+        }
+
+        ExtraHudBoxCount = hudCount;
+        ExtraHudBoxSize = hudBoxSize;
+        HudItemIconSize = iconSize;
+        ExtraHudBoxSpacing = boxSpacing;
+        FoodDefinitions = foods;
+
+        return normalized;
+    }
+
+    private static void WriteConfig(string configPath, HungerModConfig config)
+    {
+        try
+        {
+            string json = JsonSerializer.Serialize(config, ConfigJsonOptions);
+            File.WriteAllText(configPath, json);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"HungerMod: failed to write config '{configPath}': {ex.Message}");
+        }
+    }
+
     private sealed class PlayerFoodState
     {
         public readonly List<ActiveFoodEffect> ActiveFoods = [];
@@ -925,6 +1093,23 @@ public class Mod : ModBase
     {
         public int ItemId = itemId;
         public int RemainingTicks = remainingTicks;
+    }
+
+    private sealed class HungerModConfig
+    {
+        public int ExtraHudBoxCount { get; set; } = DefaultExtraHudBoxCount;
+        public int ExtraHudBoxSize { get; set; } = DefaultExtraHudBoxSize;
+        public int HudItemIconSize { get; set; } = DefaultHudItemIconSize;
+        public int ExtraHudBoxSpacing { get; set; } = DefaultExtraHudBoxSpacing;
+        public List<FoodDefinitionConfig> FoodDefinitions { get; set; } = [];
+    }
+
+    private sealed class FoodDefinitionConfig
+    {
+        public int ItemId { get; set; }
+        public int BonusHealth { get; set; }
+        public float RegenPerSecond { get; set; }
+        public int DurationSeconds { get; set; }
     }
 
     private readonly record struct FoodDefinition(int BonusHealth, float RegenPerSecond, int DurationSeconds);
