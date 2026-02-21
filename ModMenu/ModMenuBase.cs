@@ -12,8 +12,8 @@ public class ModMenuBase : ModBase
     public override string Name => "Mod Menu";
     public override string Description => "Adds a mod list menu to the game.";
     public override string Author => "vos6434";
-    private const int ButtonMainMenuModMenuId = 5;
-    private const int ButtonIngameMenuModMenuId = 7;
+    private const int ButtonMainMenuModMenuId = 2001;
+    private const int ButtonIngameMenuModMenuId = 2002;
     private const int ButtonTexturePacksAndModsId = 3;
     private const int ButtonMainMenuOptionsId = 0;
     private const int ButtonQuitId = 4;
@@ -93,7 +93,8 @@ public class ModMenuBase : ModBase
 
     public override void PostInitialize(Side side)
     {
-        Console.WriteLine($"PostInitialize called for Mod Menu.");
+        Console.WriteLine($"PostInitialize called for Mod Menu. " +
+                          $"Loaded mods: [{string.Join(", ", Mods.ModRegistry.Select(m => m.Name))}]");
     }
 
     public override void Unload(Side side)
@@ -181,7 +182,6 @@ public class ModMenuBase : ModBase
 
     private static void GuiIngameMenu_InitGui(Action<GuiIngameMenu> orig, GuiIngameMenu instance)
     {
-        Console.WriteLine("Initialize called for Ingame Menu");
         orig(instance);
 
         if (ControlListField?.GetValue(instance) is not System.Collections.Generic.List<GuiButton> controls)

@@ -6,8 +6,6 @@ namespace ModMenu.Guis;
 
 public class GuiModListScreen : GuiScreen
 {
-    private static readonly bool EnableFakeModsForTesting = false;
-    private const int FakeModCount = 10;
     private const int ButtonDoneId = 200;
 
     private const int OuterMargin = 4;
@@ -23,6 +21,7 @@ public class GuiModListScreen : GuiScreen
     private const int MaxRowHeight = 40;
     private const int PreferredVisibleRows = 8;
     private const int MaxSlotWidth = 420;
+    private const string TinyLayoutMessage = "Window too small for mod menu. Increase size or lower GUI scale.";
 
     private readonly GuiScreen _parent;
     private readonly List<ModBase> _mods = [];
@@ -43,11 +42,6 @@ public class GuiModListScreen : GuiScreen
         if (Mods.ModRegistry is not null)
         {
             _mods.AddRange(Mods.ModRegistry);
-        }
-
-        if (EnableFakeModsForTesting)
-        {
-            AddFakeModsForTesting(_mods, FakeModCount);
         }
 
         _selectedModIndex = _mods.Count > 0 ? 0 : -1;
@@ -88,7 +82,7 @@ public class GuiModListScreen : GuiScreen
             DrawCenteredString(FontRenderer, "Mod List", Width / 2, HeaderY, 0xFFFFFF);
             DrawCenteredString(
                 FontRenderer,
-                "Window too small for mod menu. Increase size or lower GUI scale.",
+                TinyLayoutMessage,
                 Width / 2,
                 ListTop - 2,
                 0xC0C0C0);
@@ -262,46 +256,8 @@ public class GuiModListScreen : GuiScreen
 
     public static string GetModVersion(ModBase mod)
     {
-        if (mod is FakeMod fakeMod)
-        {
-            return fakeMod.Version;
-        }
-
         Version? version = mod.GetType().Assembly.GetName().Version;
         return version is null ? "Unknown" : version.ToString();
-    }
-
-    private static void AddFakeModsForTesting(List<ModBase> mods, int count)
-    {
-        for (int i = 1; i <= count; i++)
-        {
-            string index = i.ToString("00");
-            mods.Add(new FakeMod(
-                name: $"Test Mod {index}",
-                version: $"0.{i}.0-test",
-                author: $"TestAuthor{index}",
-                description: $"Fake mod entry {index} for UI layout testing."));
-        }
-    }
-
-    private sealed class FakeMod : ModBase
-    {
-        public override string Name { get; }
-        public override string Description { get; }
-        public override string Author { get; }
-        public string Version { get; }
-
-        public FakeMod(string name, string version, string author, string description)
-        {
-            Name = name;
-            Version = version;
-            Author = author;
-            Description = description;
-        }
-
-        public override void Initialize(Side side) { }
-        public override void PostInitialize(Side side) { }
-        public override void Unload(Side side) { }
     }
 
     private readonly record struct SlotGeometry(int Width, int Top, int Bottom, int RowHeight);
