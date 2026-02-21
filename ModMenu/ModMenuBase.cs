@@ -9,15 +9,18 @@ namespace ModMenu;
 [ModSide(Side.Client)]
 public class ModMenuBase : ModBase
 {
+    private const string LogPrefix = "ModMenu:";
     public override string Name => "Mod Menu";
     public override string Description => "Adds a mod list menu to the game.";
     public override string Author => "vos6434";
-    private const int ButtonMainMenuModMenuId = 2001;
-    private const int ButtonIngameMenuModMenuId = 2002;
-    private const int ButtonTexturePacksAndModsId = 3;
-    private const int ButtonMainMenuOptionsId = 0;
-    private const int ButtonQuitId = 4;
-    private const int ButtonIngameMenuOptionsId = 0;
+    private const int MainMenuModsButtonId = 2001;
+    private const int IngameMenuModsButtonId = 2002;
+    private const int MainMenuTexturePacksButtonId = 3;
+    private const int MainMenuOptionsButtonId = 0;
+    private const int MainMenuQuitButtonId = 4;
+    private const int IngameMenuOptionsButtonId = 0;
+    private const string ModsButtonLabel = "Mods";
+    private const string TexturePacksLabel = "Texturepacks";
     private static readonly FieldInfo? ControlListField = typeof(GuiScreen)
         .GetField("_controlList", BindingFlags.Instance | BindingFlags.NonPublic);
 
@@ -30,64 +33,58 @@ public class ModMenuBase : ModBase
     {
         Console.WriteLine("Initialize called for Mod Menu");
 
-        MethodInfo? initGuiMethod = typeof(GuiMainMenu).GetMethod(
+        MethodInfo? mainMenuInitGuiMethod = GetInstanceMethod(
+            typeof(GuiMainMenu),
             nameof(GuiMainMenu.InitGui),
-            BindingFlags.Instance | BindingFlags.Public,
-            binder: null,
-            types: Type.EmptyTypes,
-            modifiers: null);
-        if (initGuiMethod is null)
+            BindingFlags.Instance | BindingFlags.Public);
+        if (mainMenuInitGuiMethod is null)
         {
-            Console.WriteLine("Failed to hook GuiMainMenu.InitGui: method was not found.");
+            Console.WriteLine($"{LogPrefix} failed to hook GuiMainMenu.InitGui (method not found).");
         }
         else
         {
-            _guiMainMenuInitGuiHook = new Hook(initGuiMethod, GuiMainMenu_InitGui);
+            _guiMainMenuInitGuiHook = new Hook(mainMenuInitGuiMethod, GuiMainMenu_InitGui);
         }
 
-        MethodInfo? actionPerformedMethod = typeof(GuiMainMenu).GetMethod(
+        MethodInfo? mainMenuActionPerformedMethod = GetInstanceMethod(
+            typeof(GuiMainMenu),
             "ActionPerformed",
             BindingFlags.Instance | BindingFlags.NonPublic,
-            binder: null,
-            types: [typeof(GuiButton)],
-            modifiers: null);
-        if (actionPerformedMethod is null)
+            typeof(GuiButton));
+        if (mainMenuActionPerformedMethod is null)
         {
-            Console.WriteLine("Failed to hook GuiMainMenu.ActionPerformed: method was not found.");
+            Console.WriteLine($"{LogPrefix} failed to hook GuiMainMenu.ActionPerformed (method not found).");
         }
         else
         {
-            _guiMainMenuActionPerformedHook = new Hook(actionPerformedMethod, GuiMainMenu_ActionPerformed);
+            _guiMainMenuActionPerformedHook = new Hook(mainMenuActionPerformedMethod, GuiMainMenu_ActionPerformed);
         }
 
-        MethodInfo? ingameInitGuiMethod = typeof(GuiIngameMenu).GetMethod(
+        MethodInfo? ingameMenuInitGuiMethod = GetInstanceMethod(
+            typeof(GuiIngameMenu),
             nameof(GuiIngameMenu.InitGui),
-            BindingFlags.Instance | BindingFlags.Public,
-            binder: null,
-            types: Type.EmptyTypes,
-            modifiers: null);
-        if (ingameInitGuiMethod is null)
+            BindingFlags.Instance | BindingFlags.Public);
+        if (ingameMenuInitGuiMethod is null)
         {
-            Console.WriteLine("Failed to hook GuiIngameMenu.InitGui: method was not found.");
+            Console.WriteLine($"{LogPrefix} failed to hook GuiIngameMenu.InitGui (method not found).");
         }
         else
         {
-            _guiIngameMenuInitGuiHook = new Hook(ingameInitGuiMethod, GuiIngameMenu_InitGui);
+            _guiIngameMenuInitGuiHook = new Hook(ingameMenuInitGuiMethod, GuiIngameMenu_InitGui);
         }
 
-        MethodInfo? ingameActionPerformedMethod = typeof(GuiIngameMenu).GetMethod(
+        MethodInfo? ingameMenuActionPerformedMethod = GetInstanceMethod(
+            typeof(GuiIngameMenu),
             "ActionPerformed",
             BindingFlags.Instance | BindingFlags.NonPublic,
-            binder: null,
-            types: [typeof(GuiButton)],
-            modifiers: null);
-        if (ingameActionPerformedMethod is null)
+            typeof(GuiButton));
+        if (ingameMenuActionPerformedMethod is null)
         {
-            Console.WriteLine("Failed to hook GuiIngameMenu.ActionPerformed: method was not found.");
+            Console.WriteLine($"{LogPrefix} failed to hook GuiIngameMenu.ActionPerformed (method not found).");
         }
         else
         {
-            _guiIngameMenuActionPerformedHook = new Hook(ingameActionPerformedMethod, GuiIngameMenu_ActionPerformed);
+            _guiIngameMenuActionPerformedHook = new Hook(ingameMenuActionPerformedMethod, GuiIngameMenu_ActionPerformed);
         }
     }
 
@@ -114,15 +111,14 @@ public class ModMenuBase : ModBase
     {
         orig(instance);
 
-        if (ControlListField?.GetValue(instance) is not System.Collections.Generic.List<GuiButton> controls)
+        if (!TryGetControlList(instance, out List<GuiButton> controls))
         {
-            Console.WriteLine("Failed to add Mod Menu button: _controlList field was not accessible.");
             return;
         }
 
         foreach (GuiButton existingButton in controls)
         {
-            if (existingButton.Id == ButtonMainMenuModMenuId)
+            if (existingButton.Id == MainMenuModsButtonId)
             {
                 return;
             }
@@ -131,7 +127,7 @@ public class ModMenuBase : ModBase
         GuiButton? modsButton = null;
         foreach (GuiButton existingButton in controls)
         {
-            if (existingButton.Id == ButtonTexturePacksAndModsId)
+            if (existingButton.Id == MainMenuTexturePacksButtonId)
             {
                 modsButton = existingButton;
                 break;
@@ -141,10 +137,10 @@ public class ModMenuBase : ModBase
         int buttonX;
         int buttonY;
 
-        // rename texturepacks button from "Texture Packs and Mods" to just "Texturepacks".
+        // The existing menu entry currently points to texture packs.
         if (modsButton is not null)
         {
-            modsButton.DisplayString = "Texturepacks";
+            modsButton.DisplayString = TexturePacksLabel;
             buttonX = modsButton.XPosition;
             buttonY = modsButton.YPosition + 24;
         }
@@ -154,12 +150,12 @@ public class ModMenuBase : ModBase
             buttonY = instance.Height / 4 + 48 + 96;
         }
 
-        controls.Add(new GuiButton(ButtonMainMenuModMenuId, buttonX, buttonY, "Mods"));
+        controls.Add(new GuiButton(MainMenuModsButtonId, buttonX, buttonY, ModsButtonLabel));
 
         int optionsRowY = buttonY + 24;
         foreach (GuiButton existingButton in controls)
         {
-            if (existingButton.Id == ButtonMainMenuOptionsId || existingButton.Id == ButtonQuitId)
+            if (existingButton.Id == MainMenuOptionsButtonId || existingButton.Id == MainMenuQuitButtonId)
             {
                 existingButton.YPosition = optionsRowY;
             }
@@ -171,7 +167,7 @@ public class ModMenuBase : ModBase
         GuiMainMenu instance,
         GuiButton button)
     {
-        if (button.Id == ButtonMainMenuModMenuId)
+        if (button.Id == MainMenuModsButtonId)
         {
             instance.mc.displayGuiScreen(new GuiModListScreen(instance));
             return;
@@ -184,15 +180,14 @@ public class ModMenuBase : ModBase
     {
         orig(instance);
 
-        if (ControlListField?.GetValue(instance) is not System.Collections.Generic.List<GuiButton> controls)
+        if (!TryGetControlList(instance, out List<GuiButton> controls))
         {
-            Console.WriteLine("Failed to add Mods button to game menu: _controlList field was not accessible.");
             return;
         }
 
         foreach (GuiButton existingButton in controls)
         {
-            if (existingButton.Id == ButtonIngameMenuModMenuId)
+            if (existingButton.Id == IngameMenuModsButtonId)
             {
                 return;
             }
@@ -201,7 +196,7 @@ public class ModMenuBase : ModBase
         GuiButton? optionsButton = null;
         foreach (GuiButton existingButton in controls)
         {
-            if (existingButton.Id == ButtonIngameMenuOptionsId)
+            if (existingButton.Id == IngameMenuOptionsButtonId)
             {
                 optionsButton = existingButton;
                 break;
@@ -221,7 +216,7 @@ public class ModMenuBase : ModBase
             buttonY = instance.Height / 4 + 56;
         }
 
-        controls.Add(new GuiButton(ButtonIngameMenuModMenuId, buttonX, buttonY, "Mods"));
+        controls.Add(new GuiButton(IngameMenuModsButtonId, buttonX, buttonY, ModsButtonLabel));
     }
 
     private static void GuiIngameMenu_ActionPerformed(
@@ -229,12 +224,39 @@ public class ModMenuBase : ModBase
         GuiIngameMenu instance,
         GuiButton button)
     {
-        if (button.Id == ButtonIngameMenuModMenuId)
+        if (button.Id == IngameMenuModsButtonId)
         {
             instance.mc.displayGuiScreen(new GuiModListScreen(instance));
             return;
         }
 
         orig(instance, button);
+    }
+
+    private static bool TryGetControlList(GuiScreen screen, out List<GuiButton> controls)
+    {
+        if (ControlListField?.GetValue(screen) is List<GuiButton> controlList)
+        {
+            controls = controlList;
+            return true;
+        }
+
+        controls = [];
+        Console.WriteLine($"{LogPrefix} failed to access {screen.GetType().Name}._controlList.");
+        return false;
+    }
+
+    private static MethodInfo? GetInstanceMethod(
+        Type targetType,
+        string methodName,
+        BindingFlags bindingFlags,
+        params Type[] parameterTypes)
+    {
+        return targetType.GetMethod(
+            methodName,
+            bindingFlags,
+            binder: null,
+            types: parameterTypes,
+            modifiers: null);
     }
 }

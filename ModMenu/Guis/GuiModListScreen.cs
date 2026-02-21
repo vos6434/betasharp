@@ -6,8 +6,10 @@ namespace ModMenu.Guis;
 
 public class GuiModListScreen : GuiScreen
 {
+#if DEBUG
     private static readonly bool DebugFakeMods = false;
     private const int DebugFakeModCount = 10;
+#endif
     private const int ButtonDoneId = 200;
 
     private const int OuterMargin = 4;
@@ -23,13 +25,29 @@ public class GuiModListScreen : GuiScreen
     private const int MaxRowHeight = 40;
     private const int PreferredVisibleRows = 8;
     private const int MaxSlotWidth = 420;
+    private const int DoneButtonBottomOffset = 38;
     private const string TinyLayoutMessage = "Window too small for mod menu. Increase size or lower GUI scale.";
 
     private readonly GuiScreen _parent;
     private readonly List<ModBase> _mods = [];
     private GuiModListSlot? _modListSlot;
     private int _selectedModIndex = -1;
-    private SlotGeometry _slotGeometry;
+
+    private bool _isTinyLayout;
+    private int _doneButtonY;
+    private int _listWidth;
+    private int _listTop;
+    private int _listBottom;
+    private int _listRowHeight;
+    private int _detailsLeft;
+    private int _detailsTop;
+    private int _detailsRight;
+    private int _detailsBottom;
+
+    private int _slotCachedWidth = -1;
+    private int _slotCachedTop = -1;
+    private int _slotCachedBottom = -1;
+    private int _slotCachedRowHeight = -1;
 
     public GuiModListScreen(GuiScreen parent)
     {
@@ -46,16 +64,21 @@ public class GuiModListScreen : GuiScreen
             _mods.AddRange(Mods.ModRegistry);
         }
 
+#if DEBUG
         if (DebugFakeMods)
         {
             AddFakeModsForTesting(_mods, DebugFakeModCount);
         }
+#endif
 
         _selectedModIndex = _mods.Count > 0 ? 0 : -1;
         _modListSlot = null;
-        _slotGeometry = default;
+        _slotCachedWidth = -1;
+        _slotCachedTop = -1;
+        _slotCachedBottom = -1;
+        _slotCachedRowHeight = -1;
 
-        int doneButtonY = Math.Max(4, Height - 38);
+        int doneButtonY = Math.Max(4, Height - DoneButtonBottomOffset);
         _controlList.Add(new GuiButton(ButtonDoneId, Width / 2 - 100, doneButtonY, translations.TranslateKey("gui.done")));
     }
 
@@ -72,7 +95,7 @@ public class GuiModListScreen : GuiScreen
             return;
         }
 
-        if (_modListSlot is not null && !ComputeLayout().IsTiny)
+        if (_modListSlot is not null && !IsTinyLayout())
         {
             _modListSlot.ActionPerformed(button);
         }
@@ -80,10 +103,10 @@ public class GuiModListScreen : GuiScreen
 
     public override void Render(int mouseX, int mouseY, float partialTicks)
     {
-        Layout layout = ComputeLayout();
-        UpdateDoneButton(layout.DoneButtonY);
+        ComputeLayout();
+        UpdateDoneButton(_doneButtonY);
 
-        if (layout.IsTiny)
+        if (_isTinyLayout)
         {
             DrawBackground(0);
             DrawCenteredString(FontRenderer, "Mod List", Width / 2, HeaderY, 0xFFFFFF);
@@ -97,25 +120,25 @@ public class GuiModListScreen : GuiScreen
             return;
         }
 
-        EnsureSlot(layout);
+        EnsureSlot();
         _modListSlot!.DrawScreen(mouseX, mouseY, partialTicks);
 
         DrawCenteredString(FontRenderer, "Mod List", Width / 2, HeaderY, 0xFFFFFF);
-        if (layout.DetailsRight > layout.DetailsLeft && layout.DetailsBottom > layout.DetailsTop)
+        if (_detailsRight > _detailsLeft && _detailsBottom > _detailsTop)
         {
-            DrawRect(layout.DetailsLeft, layout.DetailsTop, layout.DetailsRight, layout.DetailsBottom, 0x90000000u);
+            DrawRect(_detailsLeft, _detailsTop, _detailsRight, _detailsBottom, 0x90000000u);
 
             if (_selectedModIndex >= 0 && _selectedModIndex < _mods.Count)
             {
-                DrawModDetails(layout.DetailsLeft, layout.DetailsTop, layout.DetailsRight, layout.DetailsBottom, _mods[_selectedModIndex]);
+                DrawModDetails(_detailsLeft, _detailsTop, _detailsRight, _detailsBottom, _mods[_selectedModIndex]);
             }
             else
             {
                 DrawCenteredString(
                     FontRenderer,
                     "No mods loaded.",
-                    (layout.DetailsLeft + layout.DetailsRight) / 2,
-                    layout.DetailsTop + 12,
+                    (_detailsLeft + _detailsRight) / 2,
+                    _detailsTop + 12,
                     0xC0C0C0);
             }
         }
@@ -139,66 +162,71 @@ public class GuiModListScreen : GuiScreen
         }
     }
 
-    private void EnsureSlot(Layout layout)
+    private void EnsureSlot()
     {
-        SlotGeometry geometry = new(layout.ListWidth, layout.ListTop, layout.ListBottom, layout.ListRowHeight);
-        if (_modListSlot is not null && geometry.Equals(_slotGeometry))
+        if (_modListSlot is not null &&
+            _slotCachedWidth == _listWidth &&
+            _slotCachedTop == _listTop &&
+            _slotCachedBottom == _listBottom &&
+            _slotCachedRowHeight == _listRowHeight)
         {
             return;
         }
 
-        _slotGeometry = geometry;
+        _slotCachedWidth = _listWidth;
+        _slotCachedTop = _listTop;
+        _slotCachedBottom = _listBottom;
+        _slotCachedRowHeight = _listRowHeight;
+
         _modListSlot = new GuiModListSlot(
             this,
             _mods,
-            geometry.Width,
+            _listWidth,
             Height,
-            geometry.Top,
-            geometry.Bottom,
-            geometry.RowHeight);
+            _listTop,
+            _listBottom,
+            _listRowHeight);
     }
 
-    private Layout ComputeLayout()
+    private bool IsTinyLayout()
     {
-        int doneButtonY = Math.Max(4, Height - 38);
         int contentBottom = Math.Max(ListTop + 1, Height - FooterReservedHeight);
         int availableHeight = contentBottom - ListTop;
         int contentWidth = Width - OuterMargin * 2;
         int minRequiredWidth = MinListPanelWidth + PanelGap + MinDetailsPanelWidth;
         int minRequiredHeight = Math.Max(MinListViewportHeight, MinDetailsPanelHeight);
-        if (contentWidth < minRequiredWidth || availableHeight < minRequiredHeight)
+        return contentWidth < minRequiredWidth || availableHeight < minRequiredHeight;
+    }
+
+    private void ComputeLayout()
+    {
+        _doneButtonY = Math.Max(4, Height - DoneButtonBottomOffset);
+        int contentBottom = Math.Max(ListTop + 1, Height - FooterReservedHeight);
+        int availableHeight = contentBottom - ListTop;
+
+        _listTop = ListTop;
+        _listBottom = contentBottom;
+        _listRowHeight = ComputeRowHeight(availableHeight);
+
+        _isTinyLayout = IsTinyLayout();
+        if (_isTinyLayout)
         {
-            return new Layout(
-                true,
-                MinListPanelWidth,
-                ListTop,
-                ListTop + MinListViewportHeight,
-                MinRowHeight,
-                0,
-                0,
-                0,
-                0,
-                doneButtonY);
+            _listWidth = MinListPanelWidth;
+            _detailsLeft = 0;
+            _detailsTop = 0;
+            _detailsRight = 0;
+            _detailsBottom = 0;
+            return;
         }
 
+        int contentWidth = Width - OuterMargin * 2;
         int maxListWidth = contentWidth - PanelGap - MinDetailsPanelWidth;
         int preferredListWidth = contentWidth * 38 / 100;
-        int listWidth = Math.Clamp(preferredListWidth, MinListPanelWidth, Math.Min(MaxSlotWidth, maxListWidth));
-        int detailsLeft = OuterMargin + listWidth + PanelGap;
-        int detailsRight = Width - OuterMargin;
-        int rowHeight = ComputeRowHeight(availableHeight);
-
-        return new Layout(
-            false,
-            listWidth,
-            ListTop,
-            contentBottom,
-            rowHeight,
-            detailsLeft,
-            ListTop,
-            detailsRight,
-            contentBottom,
-            doneButtonY);
+        _listWidth = Math.Clamp(preferredListWidth, MinListPanelWidth, Math.Min(MaxSlotWidth, maxListWidth));
+        _detailsLeft = OuterMargin + _listWidth + PanelGap;
+        _detailsTop = ListTop;
+        _detailsRight = Width - OuterMargin;
+        _detailsBottom = contentBottom;
     }
 
     private int ComputeRowHeight(int viewportHeight)
@@ -263,15 +291,18 @@ public class GuiModListScreen : GuiScreen
 
     public static string GetModVersion(ModBase mod)
     {
+#if DEBUG
         if (mod is FakeMod fakeMod)
         {
             return fakeMod.Version;
         }
+#endif
 
         Version? version = mod.GetType().Assembly.GetName().Version;
         return version is null ? "Unknown" : version.ToString();
     }
 
+#if DEBUG
     private static void AddFakeModsForTesting(List<ModBase> mods, int count)
     {
         for (int i = 1; i <= count; i++)
@@ -306,18 +337,5 @@ public class GuiModListScreen : GuiScreen
 
         public override void Unload(Side side) { }
     }
-
-    private readonly record struct SlotGeometry(int Width, int Top, int Bottom, int RowHeight);
-
-    private readonly record struct Layout(
-        bool IsTiny,
-        int ListWidth,
-        int ListTop,
-        int ListBottom,
-        int ListRowHeight,
-        int DetailsLeft,
-        int DetailsTop,
-        int DetailsRight,
-        int DetailsBottom,
-        int DoneButtonY);
+#endif
 }
