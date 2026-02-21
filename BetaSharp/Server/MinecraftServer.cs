@@ -98,8 +98,6 @@ public abstract class MinecraftServer : Runnable, CommandOutput
             }
         }
 
-        Mods.LoadMods(".", Side.Server);
-
         Log.Info($"Preparing level \"{worldName}\"");
         loadWorld(new RegionWorldStorageSource(getFile(".")), worldName, seed);
 
