@@ -183,7 +183,7 @@ public partial class Minecraft
 
         mcDataDir = getMinecraftDir();
 
-        Mods.LoadMods(mcDataDir.getAbsolutePath(), Side.Client);
+        Mods.LoadMods(mcDataDir.getAbsolutePath(), Side.Both);
 
         saveLoader = new RegionWorldStorageSource(System.IO.Path.Combine(mcDataDir.getAbsolutePath(), "saves"));
         options = new GameOptions(this, mcDataDir.getAbsolutePath());

@@ -19,12 +19,11 @@ public class Mods
     /// This is by design. Mods that throw exceptions during initialization should be fixed by their authors, not silently ignored.
     /// If a mod is broken to the point where it cannot be loaded at all, it will be skipped and an error will be logged.
     /// </summary>
-    /// <exception cref="InvalidOperationException">Thrown if this method has already been called.</exception>
     public static void LoadMods(string baseDirectory, Side side)
     {
         if (_loaded)
         {
-            throw new InvalidOperationException("Mods have already been loaded.");
+            return;
         }
 
         _loaded = true;
@@ -97,7 +96,7 @@ public class Mods
             }
             if (Attribute.GetCustomAttribute(modType, typeof(ModSideAttribute)) is ModSideAttribute modSideAttr)
             {
-                if (modSideAttr.Side != side && modSideAttr.Side != Side.Both)
+                if (modSideAttr.Side != side && modSideAttr.Side != Side.Both && side != Side.Both)
                 {
                     Log.Info($"Skipping mod {file} because it is marked for side {modSideAttr.Side} and not {side}.");
                     continue;
