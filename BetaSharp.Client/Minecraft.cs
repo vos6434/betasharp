@@ -174,7 +174,7 @@ public partial class Minecraft
 
         mcDataDir = getMinecraftDir();
 
-        Mods.LoadMods(System.IO.Path.Combine(mcDataDir.getAbsolutePath(), "mods"), Side.Client);
+        Mods.LoadMods(mcDataDir.getAbsolutePath(), Side.Client);
 
         saveLoader = new RegionWorldStorageSource(new java.io.File(mcDataDir, "saves"));
         options = new GameOptions(this, mcDataDir.getAbsolutePath());
@@ -1129,7 +1129,7 @@ public partial class Minecraft
                 if (joinPlayerCounter == 30)
                 {
                     joinPlayerCounter = 0;
-                    world.loadChunksNearEntity(player);
+                    world.LoadChunksNearEntity(player);
                 }
             }
 
@@ -1181,8 +1181,8 @@ public partial class Minecraft
 
             if (!isGamePaused && world != null)
             {
-                world.displayTick(MathHelper.floor_double(player.x),
-                    MathHelper.floor_double(player.y), MathHelper.floor_double(player.z));
+                world.displayTick(MathHelper.Floor(player.x),
+                    MathHelper.Floor(player.y), MathHelper.Floor(player.z));
             }
 
             if (!isGamePaused)

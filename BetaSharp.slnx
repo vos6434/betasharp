@@ -5,6 +5,5 @@
   <Project Path="BetaSharp.Client/BetaSharp.Client.csproj" />
   <Project Path="BetaSharp.Server/BetaSharp.Server.csproj" />
   <Project Path="BetaSharp/BetaSharp.csproj" />
-  <Project Path="ModMenu\ModMenu.csproj" Type="Classic C#" />
-  <Project Path="HungerMod\HungerMod.csproj" Type="Classic C#" />
+  <Project Path="ExampleMod\ExampleMod.csproj" Type="Classic C#" />
 </Solution>
