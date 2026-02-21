@@ -901,6 +901,9 @@ public class Mod : IMod
     {
         return new Dictionary<int, FoodDefinition>
         {
+            // FoodDefinition(BonusHealth, RegenPerSecond, DurationSeconds).
+            // These values are tiered for gameplay balance: snacks are low/short, cooked meals are medium/high and longer,
+            // and Golden Apple is the top-tier outlier (large health boost, high regen, longest duration).
             [Item.Apple.id] = new FoodDefinition(2, 0.5F, 120),
             [Item.MushroomStew.id] = new FoodDefinition(6, 1.5F, 240),
             [Item.Bread.id] = new FoodDefinition(4, 1.0F, 180),
