@@ -10,9 +10,9 @@ public class GuiModListSlot : GuiSlot
     private const string Ellipsis = "...";
 
     private readonly GuiModListScreen _parent;
-    private readonly List<IMod> _mods;
+    private readonly List<ModBase> _mods;
 
-    public GuiModListSlot(GuiModListScreen parent, List<IMod> mods)
+    public GuiModListSlot(GuiModListScreen parent, List<ModBase> mods)
         : base(parent.mc, PanelWidth, parent.Height, 36, parent.Height - 60, 36)
     {
         _parent = parent;
@@ -46,7 +46,7 @@ public class GuiModListSlot : GuiSlot
 
     protected override void DrawSlot(int index, int x, int y, int slotHeight, Tessellator tess)
     {
-        IMod mod = _mods[index];
+        ModBase mod = _mods[index];
         string description = string.IsNullOrWhiteSpace(mod.Description)
             ? "No description provided."
             : mod.Description;

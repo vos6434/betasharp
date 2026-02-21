@@ -6,13 +6,13 @@ namespace ModMenu.Guis;
 
 public class GuiModListScreen : GuiScreen
 {
-    private const bool EnableFakeModsForTesting = false;
+    private static readonly bool EnableFakeModsForTesting = false;
     private const int FakeModCount = 10;
     private const int ButtonDone = 200;
     private const int PanelGap = 10;
 
     private readonly GuiScreen _parent;
-    private readonly List<IMod> _mods = [];
+    private readonly List<ModBase> _mods = [];
     private GuiModListSlot _modListSlot = null!;
     private int _selectedModIndex = -1;
 
@@ -83,7 +83,7 @@ public class GuiModListScreen : GuiScreen
         base.Render(mouseX, mouseY, partialTicks);
     }
 
-    private void DrawModDetails(int left, int top, int right, int bottom, IMod mod)
+    private void DrawModDetails(int left, int top, int right, int bottom, ModBase mod)
     {
         int centerX = (left + right) / 2;
         int textX = left + 10;
@@ -125,11 +125,11 @@ public class GuiModListScreen : GuiScreen
 
     public bool IsSelectedMod(int index) => index == _selectedModIndex;
 
-    public IMod GetModAt(int index) => _mods[index];
+    public ModBase GetModAt(int index) => _mods[index];
 
     public int GetModCount() => _mods.Count;
 
-    public static string GetModVersion(IMod mod)
+    public static string GetModVersion(ModBase mod)
     {
         if (mod is FakeMod fakeMod)
         {
@@ -140,7 +140,7 @@ public class GuiModListScreen : GuiScreen
         return version is null ? "Unknown" : version.ToString();
     }
 
-    private static void AddFakeModsForTesting(List<IMod> mods, int count)
+    private static void AddFakeModsForTesting(List<ModBase> mods, int count)
     {
         for (int i = 1; i <= count; i++)
         {
@@ -153,13 +153,12 @@ public class GuiModListScreen : GuiScreen
         }
     }
 
-    private sealed class FakeMod : IMod
+    private sealed class FakeMod : ModBase
     {
-        public string Name { get; }
-        public string Description { get; }
-        public string Author { get; }
+        public override string Name { get; }
+        public override string Description { get; }
+        public override string Author { get; }
         public string Version { get; }
-        public Side Side => Side.Client;
 
         public FakeMod(string name, string version, string author, string description)
         {
@@ -169,8 +168,8 @@ public class GuiModListScreen : GuiScreen
             Description = description;
         }
 
-        public void Initialize() { }
-        public void PostInitialize() { }
-        public void Unload() { }
+        public override void Initialize(Side side) { }
+        public override void PostInitialize(Side side) { }
+        public override void Unload(Side side) { }
     }
 }

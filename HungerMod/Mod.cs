@@ -17,7 +17,7 @@ using Silk.NET.OpenGL.Legacy;
 namespace HungerMod;
 
 [ModSide(Side.Client)]
-public class Mod : IMod
+public class Mod : ModBase
 {
     private const int BaseMaxHealth = 20;
     private const int AbsoluteMaxHealth = 40;
@@ -53,12 +53,11 @@ public class Mod : IMod
     private Hook? _clientPlayerSendChatMessageHook;
     private Hook? _entityClientPlayerMPSendChatMessageHook;
 
-    public string Name => "Hunger Mod";
-    public string Description => "Valheim-style timed food buffs for health and regeneration.";
-    public string Author => "vos6434";
-    public Side Side => Side.Client;
+    public override string Name => "Hunger Mod";
+    public override string Description => "Valheim-style timed food buffs for health and regeneration.";
+    public override string Author => "vos6434";
 
-    public void Initialize()
+    public override void Initialize(Side side)
     {
         MethodInfo? playerTickMovementMethod = typeof(EntityPlayer).GetMethod(
             nameof(EntityPlayer.tickMovement),
@@ -232,11 +231,11 @@ public class Mod : IMod
         Console.WriteLine("HungerMod: enabled timed food effects.");
     }
 
-    public void PostInitialize()
+    public override void PostInitialize(Side side)
     {
     }
 
-    public void Unload()
+    public override void Unload(Side side)
     {
         _entityPlayerTickMovementHook?.Dispose();
         _entityPlayerTickMovementHook = null;

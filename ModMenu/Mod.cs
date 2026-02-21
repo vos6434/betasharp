@@ -7,12 +7,11 @@ using MonoMod.RuntimeDetour;
 namespace ModMenu;
 
 [ModSide(Side.Client)]
-public class Mod : IMod
+public class Mod : ModBase
 {
-    public string Name => "Mod Menu";
-    public string Description => "Adds a mod menu to the main menu.";
-    public string Author => "vos6434";
-    public Side Side => Side.Client;
+    public override string Name => "Mod Menu";
+    public override string Description => "Adds a mod menu to the main menu.";
+    public override string Author => "vos6434";
     private const int ButtonMainMenuModMenu = 5;
     private const int ButtonIngameMenuModMenu = 7;
     private const int ButtonTexturePacksAndMods = 3;
@@ -27,7 +26,7 @@ public class Mod : IMod
     private Hook? _guiIngameMenuInitGuiHook;
     private Hook? _guiIngameMenuActionPerformedHook;
 
-    public void Initialize()
+    public override void Initialize(Side side)
     {
         Console.WriteLine("Initialize called for Mod Menu");
 
@@ -92,13 +91,13 @@ public class Mod : IMod
         }
     }
 
-    public void PostInitialize()
+    public override void PostInitialize(Side side)
     {
         Console.WriteLine($"PostInitialize called for Mod Menu. " +
                           $"Loaded mods: [{string.Join(", ", Mods.ModRegistry.Select(m => m.Name))}]");
     }
 
-    public void Unload()
+    public override void Unload(Side side)
     {
         Console.WriteLine("Mod Menu is unloading");
         _guiMainMenuInitGuiHook?.Dispose();
