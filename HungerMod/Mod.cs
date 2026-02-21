@@ -1,7 +1,9 @@
 using System.Reflection;
 using BetaSharp.Blocks.Materials;
 using BetaSharp.Client;
+using BetaSharp.Client.Entities;
 using BetaSharp.Client.Guis;
+using BetaSharp.Client.Network;
 using BetaSharp.Client.Rendering.Core;
 using BetaSharp.Client.Rendering.Items;
 using BetaSharp.Entities;
@@ -24,6 +26,7 @@ public class Mod : IMod
     private const int LowTimeBlinkPeriodTicks = 8;
     private const int ExtraHudBoxCount = 3;
     private const int ExtraHudBoxSize = 16;
+    private const int HudItemIconSize = 16;
     private const int ExtraHudBoxSpacing = 2;
     private const string FoodsNbtKey = "HungerModFoods";
     private const string RegenNbtKey = "HungerModRegen";
@@ -33,6 +36,8 @@ public class Mod : IMod
     private static readonly ItemRenderer HudItemRenderer = new();
     private static readonly FieldInfo? GuiIngameMcField = typeof(GuiIngame)
         .GetField("_mc", BindingFlags.Instance | BindingFlags.NonPublic);
+    private static readonly FieldInfo? ClientPlayerMcField = typeof(ClientPlayerEntity)
+        .GetField("mc", BindingFlags.Instance | BindingFlags.NonPublic);
     private static readonly Dictionary<int, FoodDefinition> FoodDefinitions = CreateFoodDefinitions();
     private static readonly Dictionary<EntityPlayer, PlayerFoodState> PlayerFoodStates = [];
 
@@ -42,8 +47,11 @@ public class Mod : IMod
     private Hook? _entityPlayerReadNbtHook;
     private Hook? _entityPlayerWriteNbtHook;
     private Hook? _guiIngameRenderInventorySlotHook;
+    private Hook? _guiIngameRenderGameOverlayHook;
     private Hook? _itemFoodUseHook;
     private Hook? _itemSoupUseHook;
+    private Hook? _clientPlayerSendChatMessageHook;
+    private Hook? _entityClientPlayerMPSendChatMessageHook;
 
     public string Name => "Hunger Mod";
     public string Description => "Valheim-style timed food buffs for health and regeneration.";
@@ -142,6 +150,21 @@ public class Mod : IMod
             _guiIngameRenderInventorySlotHook = new Hook(guiRenderInventorySlotMethod, GuiIngame_RenderInventorySlot);
         }
 
+        MethodInfo? guiRenderGameOverlayMethod = typeof(GuiIngame).GetMethod(
+            nameof(GuiIngame.renderGameOverlay),
+            BindingFlags.Instance | BindingFlags.Public,
+            binder: null,
+            types: [typeof(float), typeof(bool), typeof(int), typeof(int)],
+            modifiers: null);
+        if (guiRenderGameOverlayMethod is null)
+        {
+            Console.WriteLine("HungerMod: failed to hook GuiIngame.renderGameOverlay (method not found).");
+        }
+        else
+        {
+            _guiIngameRenderGameOverlayHook = new Hook(guiRenderGameOverlayMethod, GuiIngame_RenderGameOverlay);
+        }
+
         MethodInfo? itemFoodUseMethod = typeof(ItemFood).GetMethod(
             nameof(ItemFood.use),
             BindingFlags.Instance | BindingFlags.Public,
@@ -172,6 +195,40 @@ public class Mod : IMod
             _itemSoupUseHook = new Hook(itemSoupUseMethod, ItemSoup_Use);
         }
 
+        MethodInfo? clientPlayerSendChatMessageMethod = typeof(ClientPlayerEntity).GetMethod(
+            nameof(ClientPlayerEntity.sendChatMessage),
+            BindingFlags.Instance | BindingFlags.Public,
+            binder: null,
+            types: [typeof(string)],
+            modifiers: null);
+        if (clientPlayerSendChatMessageMethod is null)
+        {
+            Console.WriteLine("HungerMod: failed to hook ClientPlayerEntity.sendChatMessage (method not found).");
+        }
+        else
+        {
+            _clientPlayerSendChatMessageHook = new Hook(
+                clientPlayerSendChatMessageMethod,
+                ClientPlayerEntity_SendChatMessage);
+        }
+
+        MethodInfo? entityClientPlayerMPSendChatMessageMethod = typeof(EntityClientPlayerMP).GetMethod(
+            nameof(EntityClientPlayerMP.sendChatMessage),
+            BindingFlags.Instance | BindingFlags.Public,
+            binder: null,
+            types: [typeof(string)],
+            modifiers: null);
+        if (entityClientPlayerMPSendChatMessageMethod is null)
+        {
+            Console.WriteLine("HungerMod: failed to hook EntityClientPlayerMP.sendChatMessage (method not found).");
+        }
+        else
+        {
+            _entityClientPlayerMPSendChatMessageHook = new Hook(
+                entityClientPlayerMPSendChatMessageMethod,
+                EntityClientPlayerMP_SendChatMessage);
+        }
+
         Console.WriteLine("HungerMod: enabled timed food effects.");
     }
 
@@ -193,10 +250,16 @@ public class Mod : IMod
         _entityPlayerWriteNbtHook = null;
         _guiIngameRenderInventorySlotHook?.Dispose();
         _guiIngameRenderInventorySlotHook = null;
+        _guiIngameRenderGameOverlayHook?.Dispose();
+        _guiIngameRenderGameOverlayHook = null;
         _itemFoodUseHook?.Dispose();
         _itemFoodUseHook = null;
         _itemSoupUseHook?.Dispose();
         _itemSoupUseHook = null;
+        _clientPlayerSendChatMessageHook?.Dispose();
+        _clientPlayerSendChatMessageHook = null;
+        _entityClientPlayerMPSendChatMessageHook?.Dispose();
+        _entityClientPlayerMPSendChatMessageHook = null;
         PlayerFoodStates.Clear();
     }
 
@@ -279,6 +342,26 @@ public class Mod : IMod
         }
 
         orig(instance, slotIndex, x, y, partialTicks);
+    }
+
+    private static void GuiIngame_RenderGameOverlay(
+        Action<GuiIngame, float, bool, int, int> orig,
+        GuiIngame instance,
+        float partialTicks,
+        bool unusedFlag,
+        int unusedA,
+        int unusedB)
+    {
+        orig(instance, partialTicks, unusedFlag, unusedA, unusedB);
+
+        if (GuiIngameMcField?.GetValue(instance) is not Minecraft mc ||
+            mc.player is null ||
+            !mc.options.ShowDebugInfo)
+        {
+            return;
+        }
+
+        RenderFoodDebugOverlay(mc);
     }
 
     private static void RenderFoodHud(GuiIngame instance, Minecraft mc)
@@ -368,6 +451,7 @@ public class Mod : IMod
         }
 
         PlayerFoodState state = GetOrCreatePlayerFoodState(mc.player);
+        int iconOffset = (int)Math.Floor((ExtraHudBoxSize - HudItemIconSize) / 2.0D);
         for (int i = 0; i < state.ActiveFoods.Count && i < ExtraHudBoxCount; i++)
         {
             ActiveFoodEffect activeFood = state.ActiveFoods[i];
@@ -377,8 +461,9 @@ public class Mod : IMod
                 continue;
             }
 
-            int iconX = boxStartX + i * (ExtraHudBoxSize + ExtraHudBoxSpacing) + 1;
-            int iconY = boxY + 1;
+            int boxX = boxStartX + i * (ExtraHudBoxSize + ExtraHudBoxSpacing);
+            int iconX = boxX + iconOffset;
+            int iconY = boxY + iconOffset;
             bool isLowTime = activeFood.RemainingTicks < LowTimeThresholdTicks;
             bool shouldDrawIcon = !isLowTime || (mc.player.age / LowTimeBlinkPeriodTicks) % 2 == 0;
 
@@ -396,6 +481,33 @@ public class Mod : IMod
 
         GLManager.GL.Enable(GLEnum.Texture2D);
         GLManager.GL.Color4(1.0F, 1.0F, 1.0F, 1.0F);
+    }
+
+    private static void RenderFoodDebugOverlay(Minecraft mc)
+    {
+        int meshY = mc.internalServer != null ? 120 : 104;
+        int startY = meshY + 16;
+
+        Gui.DrawString(mc.fontRenderer, "HungerMod Foods:", 2, startY, 0xE0E0E0);
+
+        PlayerFoodState state = GetOrCreatePlayerFoodState(mc.player);
+        for (int i = 0; i < ExtraHudBoxCount; i++)
+        {
+            string lineText;
+            if (i < state.ActiveFoods.Count)
+            {
+                ActiveFoodEffect activeFood = state.ActiveFoods[i];
+                string itemName = GetItemDisplayName(activeFood.ItemId);
+                string remaining = FormatRemainingTimeMinutesSeconds(activeFood.RemainingTicks);
+                lineText = $"Box {i + 1}: {itemName} ({remaining})";
+            }
+            else
+            {
+                lineText = $"Box {i + 1}: (empty)";
+            }
+
+            Gui.DrawString(mc.fontRenderer, lineText, 2, startY + 10 + i * 10, 0xE0E0E0);
+        }
     }
 
     private static void DrawFoodTimeOverlay(Minecraft mc, string text, int iconX, int iconY)
@@ -476,6 +588,66 @@ public class Mod : IMod
         }
 
         return orig(instance, itemStack, world, entityPlayer);
+    }
+
+    private static void ClientPlayerEntity_SendChatMessage(
+        Action<ClientPlayerEntity, string> orig,
+        ClientPlayerEntity player,
+        string message)
+    {
+        if (TryHandleClearHungerCommand(player, message))
+        {
+            return;
+        }
+
+        orig(player, message);
+    }
+
+    private static void EntityClientPlayerMP_SendChatMessage(
+        Action<EntityClientPlayerMP, string> orig,
+        EntityClientPlayerMP player,
+        string message)
+    {
+        if (TryHandleClearHungerCommand(player, message))
+        {
+            return;
+        }
+
+        orig(player, message);
+    }
+
+    private static bool TryHandleClearHungerCommand(ClientPlayerEntity player, string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return false;
+        }
+
+        string[] parts = message.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0 || !parts[0].Equals("/clearhunger", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        ClearFoodEffects(player);
+        AddPlayerChatMessage(player, "HungerMod: cleared active food effects.");
+        return true;
+    }
+
+    private static void ClearFoodEffects(EntityPlayer player)
+    {
+        PlayerFoodState state = GetOrCreatePlayerFoodState(player);
+        state.ActiveFoods.Clear();
+        state.RegenAccumulator = 0.0F;
+        ApplyFoodHealthProfile(player, state);
+    }
+
+    private static void AddPlayerChatMessage(ClientPlayerEntity player, string message)
+    {
+        if (ClientPlayerMcField?.GetValue(player) is Minecraft mc)
+        {
+            mc.ingameGUI.addChatMessage(message);
+        }
     }
 
     private static void ConsumeFoodAndApplyEffects(EntityPlayer player, ItemStack stack, FoodDefinition definition)
@@ -705,6 +877,24 @@ public class Mod : IMod
         int remainingSeconds = Math.Max(0, (remainingTicks + TicksPerSecond - 1) / TicksPerSecond);
         int remainingMinutes = (remainingSeconds + 59) / 60;
         return remainingMinutes.ToString();
+    }
+
+    private static string FormatRemainingTimeMinutesSeconds(int remainingTicks)
+    {
+        int totalSeconds = Math.Max(0, (remainingTicks + TicksPerSecond - 1) / TicksPerSecond);
+        int minutes = totalSeconds / 60;
+        int seconds = totalSeconds % 60;
+        return $"{minutes}:{seconds:D2}";
+    }
+
+    private static string GetItemDisplayName(int itemId)
+    {
+        if (itemId < 0 || itemId >= Item.ITEMS.Length || Item.ITEMS[itemId] is not Item item)
+        {
+            return $"Unknown ({itemId})";
+        }
+
+        return item.getStatName();
     }
 
     private static Dictionary<int, FoodDefinition> CreateFoodDefinitions()
