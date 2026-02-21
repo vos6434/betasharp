@@ -7,6 +7,7 @@ using BetaSharp.Client.Rendering.Items;
 using BetaSharp.Entities;
 using BetaSharp.Items;
 using BetaSharp.Modding;
+using BetaSharp.NBT;
 using BetaSharp.Worlds;
 using MonoMod.RuntimeDetour;
 using Silk.NET.OpenGL.Legacy;
@@ -16,23 +17,36 @@ namespace HungerMod;
 [ModSide(Side.Client)]
 public class Mod : IMod
 {
-    private const int DoubledMaxHealth = 40;
+    private const int BaseMaxHealth = 20;
+    private const int AbsoluteMaxHealth = 40;
+    private const int TicksPerSecond = 20;
+    private const int LowTimeThresholdTicks = 30 * TicksPerSecond;
+    private const int LowTimeBlinkPeriodTicks = 8;
     private const int ExtraHudBoxCount = 3;
-    private const int ExtraHudBoxSize = 17;
+    private const int ExtraHudBoxSize = 16;
     private const int ExtraHudBoxSpacing = 2;
+    private const string FoodsNbtKey = "HungerModFoods";
+    private const string RegenNbtKey = "HungerModRegen";
+    private const string FoodItemIdNbtKey = "ItemId";
+    private const string FoodTicksNbtKey = "Ticks";
+
     private static readonly ItemRenderer HudItemRenderer = new();
-    private static readonly List<int> RecentFoodItemIds = [];
     private static readonly FieldInfo? GuiIngameMcField = typeof(GuiIngame)
         .GetField("_mc", BindingFlags.Instance | BindingFlags.NonPublic);
+    private static readonly Dictionary<int, FoodDefinition> FoodDefinitions = CreateFoodDefinitions();
+    private static readonly Dictionary<EntityPlayer, PlayerFoodState> PlayerFoodStates = [];
 
     private Hook? _entityPlayerTickMovementHook;
     private Hook? _entityPlayerTeleportToTopHook;
     private Hook? _entityLivingHealHook;
+    private Hook? _entityPlayerReadNbtHook;
+    private Hook? _entityPlayerWriteNbtHook;
     private Hook? _guiIngameRenderInventorySlotHook;
     private Hook? _itemFoodUseHook;
+    private Hook? _itemSoupUseHook;
 
     public string Name => "Hunger Mod";
-    public string Description => "Gives players 20 hearts (40 health).";
+    public string Description => "Valheim-style timed food buffs for health and regeneration.";
     public string Author => "vos6434";
     public Side Side => Side.Client;
 
@@ -83,6 +97,36 @@ public class Mod : IMod
             _entityLivingHealHook = new Hook(livingHealMethod, EntityLiving_Heal);
         }
 
+        MethodInfo? playerReadNbtMethod = typeof(EntityPlayer).GetMethod(
+            nameof(EntityPlayer.readNbt),
+            BindingFlags.Instance | BindingFlags.Public,
+            binder: null,
+            types: [typeof(NBTTagCompound)],
+            modifiers: null);
+        if (playerReadNbtMethod is null)
+        {
+            Console.WriteLine("HungerMod: failed to hook EntityPlayer.readNbt (method not found).");
+        }
+        else
+        {
+            _entityPlayerReadNbtHook = new Hook(playerReadNbtMethod, EntityPlayer_ReadNbt);
+        }
+
+        MethodInfo? playerWriteNbtMethod = typeof(EntityPlayer).GetMethod(
+            nameof(EntityPlayer.writeNbt),
+            BindingFlags.Instance | BindingFlags.Public,
+            binder: null,
+            types: [typeof(NBTTagCompound)],
+            modifiers: null);
+        if (playerWriteNbtMethod is null)
+        {
+            Console.WriteLine("HungerMod: failed to hook EntityPlayer.writeNbt (method not found).");
+        }
+        else
+        {
+            _entityPlayerWriteNbtHook = new Hook(playerWriteNbtMethod, EntityPlayer_WriteNbt);
+        }
+
         MethodInfo? guiRenderInventorySlotMethod = typeof(GuiIngame).GetMethod(
             "renderInventorySlot",
             BindingFlags.Instance | BindingFlags.NonPublic,
@@ -113,7 +157,22 @@ public class Mod : IMod
             _itemFoodUseHook = new Hook(itemFoodUseMethod, ItemFood_Use);
         }
 
-        Console.WriteLine("HungerMod: enabled 20-heart player health.");
+        MethodInfo? itemSoupUseMethod = typeof(ItemSoup).GetMethod(
+            nameof(ItemSoup.use),
+            BindingFlags.Instance | BindingFlags.Public,
+            binder: null,
+            types: [typeof(ItemStack), typeof(World), typeof(EntityPlayer)],
+            modifiers: null);
+        if (itemSoupUseMethod is null)
+        {
+            Console.WriteLine("HungerMod: failed to hook ItemSoup.use (method not found).");
+        }
+        else
+        {
+            _itemSoupUseHook = new Hook(itemSoupUseMethod, ItemSoup_Use);
+        }
+
+        Console.WriteLine("HungerMod: enabled timed food effects.");
     }
 
     public void PostInitialize()
@@ -128,34 +187,35 @@ public class Mod : IMod
         _entityPlayerTeleportToTopHook = null;
         _entityLivingHealHook?.Dispose();
         _entityLivingHealHook = null;
+        _entityPlayerReadNbtHook?.Dispose();
+        _entityPlayerReadNbtHook = null;
+        _entityPlayerWriteNbtHook?.Dispose();
+        _entityPlayerWriteNbtHook = null;
         _guiIngameRenderInventorySlotHook?.Dispose();
         _guiIngameRenderInventorySlotHook = null;
         _itemFoodUseHook?.Dispose();
         _itemFoodUseHook = null;
-        RecentFoodItemIds.Clear();
+        _itemSoupUseHook?.Dispose();
+        _itemSoupUseHook = null;
+        PlayerFoodStates.Clear();
     }
 
     private static void EntityPlayer_TickMovement(
         Action<EntityPlayer> orig,
-        EntityPlayer instance)
+        EntityPlayer player)
     {
-        ApplyDoubleHealthProfile(instance, fillToMax: false);
-        orig(instance);
+        PlayerFoodState state = GetOrCreatePlayerFoodState(player);
+        RemoveExpiredEffects(state);
+        ApplyFoodHealthProfile(player, state);
 
-        if (instance.world.difficulty == 0 &&
-            instance.maxHealth > 20 &&
-            instance.health >= 20 &&
-            instance.health < instance.maxHealth &&
-            instance.age % (20 * 12) == 0)
-        {
-            instance.heal(1);
-        }
+        orig(player);
+        TickFoodEffects(player, state);
     }
 
-    private static void EntityPlayer_TeleportToTop(Action<EntityPlayer> orig, EntityPlayer instance)
+    private static void EntityPlayer_TeleportToTop(Action<EntityPlayer> orig, EntityPlayer player)
     {
-        orig(instance);
-        ApplyDoubleHealthProfile(instance, fillToMax: true);
+        orig(player);
+        ApplyFoodHealthProfile(player, GetOrCreatePlayerFoodState(player));
     }
 
     private static void EntityLiving_Heal(Action<EntityLiving, int> orig, EntityLiving instance, int amount)
@@ -166,7 +226,7 @@ public class Mod : IMod
             return;
         }
 
-        ApplyDoubleHealthProfile(player, fillToMax: false);
+        ApplyFoodHealthProfile(player, GetOrCreatePlayerFoodState(player));
         if (player.health <= 0)
         {
             return;
@@ -181,6 +241,27 @@ public class Mod : IMod
         player.hearts = player.maxHealth / 2;
     }
 
+    private static void EntityPlayer_ReadNbt(
+        Action<EntityPlayer, NBTTagCompound> orig,
+        EntityPlayer player,
+        NBTTagCompound nbt)
+    {
+        orig(player, nbt);
+
+        PlayerFoodState state = GetOrCreatePlayerFoodState(player);
+        ReadFoodStateFromNbt(state, nbt);
+        ApplyFoodHealthProfile(player, state);
+    }
+
+    private static void EntityPlayer_WriteNbt(
+        Action<EntityPlayer, NBTTagCompound> orig,
+        EntityPlayer player,
+        NBTTagCompound nbt)
+    {
+        orig(player, nbt);
+        WriteFoodStateToNbt(GetOrCreatePlayerFoodState(player), nbt);
+    }
+
     private static void GuiIngame_RenderInventorySlot(
         Action<GuiIngame, int, int, int, float> orig,
         GuiIngame instance,
@@ -192,19 +273,23 @@ public class Mod : IMod
         if (slotIndex == 0 &&
             GuiIngameMcField?.GetValue(instance) is Minecraft mc &&
             mc.player is not null &&
-            mc.playerController.shouldDrawHUD() &&
-            mc.player.maxHealth > 20)
+            mc.playerController.shouldDrawHUD())
         {
-            RenderExtraHealthHud(instance, mc);
+            RenderFoodHud(instance, mc);
         }
 
         orig(instance, slotIndex, x, y, partialTicks);
     }
 
-    private static void RenderExtraHealthHud(GuiIngame instance, Minecraft mc)
+    private static void RenderFoodHud(GuiIngame instance, Minecraft mc)
     {
+        ScaledResolution scaled = new(mc.options, mc.displayWidth, mc.displayHeight);
+        int scaledWidth = scaled.ScaledWidth;
+        int scaledHeight = scaled.ScaledHeight;
+        int armorValue = mc.player.getPlayerArmorValue();
+        DrawFoodHudBoxes(mc, scaledWidth, scaledHeight, armorValue);
 
-        int extraMaxHealth = mc.player.maxHealth - 20;
+        int extraMaxHealth = mc.player.maxHealth - BaseMaxHealth;
         int extraHealth = Math.Clamp(mc.player.health - 20, 0, extraMaxHealth);
         int extraLastHealth = Math.Clamp(mc.player.lastHealth - 20, 0, extraMaxHealth);
         int extraHearts = (extraMaxHealth + 1) / 2;
@@ -213,12 +298,6 @@ public class Mod : IMod
         {
             return;
         }
-
-        ScaledResolution scaled = new(mc.options, mc.displayWidth, mc.displayHeight);
-        int scaledWidth = scaled.ScaledWidth;
-        int scaledHeight = scaled.ScaledHeight;
-        int armorValue = mc.player.getPlayerArmorValue();
-        DrawExtraHudBoxes(mc, scaledWidth, scaledHeight, armorValue);
 
         bool heartBlink = mc.player.hearts / 3 % 2 == 1;
         if (mc.player.hearts < 10)
@@ -270,7 +349,7 @@ public class Mod : IMod
         }
     }
 
-    private static void DrawExtraHudBoxes(Minecraft mc, int scaledWidth, int scaledHeight, int armorValue)
+    private static void DrawFoodHudBoxes(Minecraft mc, int scaledWidth, int scaledHeight, int armorValue)
     {
         int hudRightX = scaledWidth / 2 + 91;
         int totalWidth = ExtraHudBoxCount * ExtraHudBoxSize + (ExtraHudBoxCount - 1) * ExtraHudBoxSpacing;
@@ -288,9 +367,11 @@ public class Mod : IMod
             DrawHudBox(x, boxY);
         }
 
-        for (int i = 0; i < RecentFoodItemIds.Count && i < ExtraHudBoxCount; i++)
+        PlayerFoodState state = GetOrCreatePlayerFoodState(mc.player);
+        for (int i = 0; i < state.ActiveFoods.Count && i < ExtraHudBoxCount; i++)
         {
-            int itemId = RecentFoodItemIds[i];
+            ActiveFoodEffect activeFood = state.ActiveFoods[i];
+            int itemId = activeFood.ItemId;
             if (itemId < 0 || itemId >= Item.ITEMS.Length || Item.ITEMS[itemId] is null)
             {
                 continue;
@@ -298,12 +379,35 @@ public class Mod : IMod
 
             int iconX = boxStartX + i * (ExtraHudBoxSize + ExtraHudBoxSpacing) + 1;
             int iconY = boxY + 1;
-            ItemStack iconStack = new(itemId, 1);
-            HudItemRenderer.renderItemIntoGUI(mc.fontRenderer, mc.textureManager, iconStack, iconX, iconY);
+            bool isLowTime = activeFood.RemainingTicks < LowTimeThresholdTicks;
+            bool shouldDrawIcon = !isLowTime || (mc.player.age / LowTimeBlinkPeriodTicks) % 2 == 0;
+
+            if (shouldDrawIcon)
+            {
+                ItemStack iconStack = new(itemId, 1);
+                HudItemRenderer.renderItemIntoGUI(mc.fontRenderer, mc.textureManager, iconStack, iconX, iconY);
+            }
+
+            if (!isLowTime)
+            {
+                DrawFoodTimeOverlay(mc, FormatRemainingTime(activeFood.RemainingTicks), iconX, iconY);
+            }
         }
 
         GLManager.GL.Enable(GLEnum.Texture2D);
         GLManager.GL.Color4(1.0F, 1.0F, 1.0F, 1.0F);
+    }
+
+    private static void DrawFoodTimeOverlay(Minecraft mc, string text, int iconX, int iconY)
+    {
+        int textX = iconX + 17 - mc.fontRenderer.GetStringWidth(text);
+        int textY = iconY + 9;
+
+        GLManager.GL.Disable(GLEnum.Lighting);
+        GLManager.GL.Disable(GLEnum.DepthTest);
+        mc.fontRenderer.DrawStringWithShadow(text, textX, textY, 0xFFFFFF);
+        GLManager.GL.Enable(GLEnum.Lighting);
+        GLManager.GL.Enable(GLEnum.DepthTest);
     }
 
     private static void DrawHudBox(int x, int y)
@@ -337,28 +441,6 @@ public class Mod : IMod
         GLManager.GL.Color4(1.0F, 1.0F, 1.0F, 1.0F);
     }
 
-    private static void ApplyDoubleHealthProfile(EntityPlayer player, bool fillToMax)
-    {
-        player.maxHealth = DoubledMaxHealth;
-        if (fillToMax)
-        {
-            player.health = DoubledMaxHealth;
-            player.lastHealth = DoubledMaxHealth;
-        }
-        else
-        {
-            if (player.health > DoubledMaxHealth)
-            {
-                player.health = DoubledMaxHealth;
-            }
-
-            if (player.lastHealth > DoubledMaxHealth)
-            {
-                player.lastHealth = DoubledMaxHealth;
-            }
-        }
-    }
-
     private static ItemStack ItemFood_Use(
         Func<ItemFood, ItemStack, World, EntityPlayer, ItemStack> orig,
         ItemFood instance,
@@ -366,21 +448,292 @@ public class Mod : IMod
         World world,
         EntityPlayer entityPlayer)
     {
-        int foodItemId = itemStack.itemId;
-        int countBefore = itemStack.count;
-
-        ItemStack result = orig(instance, itemStack, world, entityPlayer);
-        int countAfter = result?.count ?? itemStack.count;
-
-        if (countAfter < countBefore && !RecentFoodItemIds.Contains(foodItemId))
+        if (!FoodDefinitions.TryGetValue(itemStack.itemId, out FoodDefinition definition))
         {
-            RecentFoodItemIds.Add(foodItemId);
-            while (RecentFoodItemIds.Count > ExtraHudBoxCount)
+            return orig(instance, itemStack, world, entityPlayer);
+        }
+
+        if (ShouldBlockFoodConsume(entityPlayer, itemStack.itemId))
+        {
+            return itemStack;
+        }
+
+        ConsumeFoodAndApplyEffects(entityPlayer, itemStack, definition);
+        return itemStack;
+    }
+
+    private static ItemStack ItemSoup_Use(
+        Func<ItemSoup, ItemStack, World, EntityPlayer, ItemStack> orig,
+        ItemSoup instance,
+        ItemStack itemStack,
+        World world,
+        EntityPlayer entityPlayer)
+    {
+        if (FoodDefinitions.ContainsKey(itemStack.itemId) &&
+            ShouldBlockFoodConsume(entityPlayer, itemStack.itemId))
+        {
+            return itemStack;
+        }
+
+        return orig(instance, itemStack, world, entityPlayer);
+    }
+
+    private static void ConsumeFoodAndApplyEffects(EntityPlayer player, ItemStack stack, FoodDefinition definition)
+    {
+        PlayerFoodState state = GetOrCreatePlayerFoodState(player);
+        int previousMaxHealth = CalculateMaxHealth(state);
+
+        if (stack.count > 0)
+        {
+            --stack.count;
+        }
+
+        state.ActiveFoods.Add(new ActiveFoodEffect(stack.itemId, definition.DurationSeconds * TicksPerSecond));
+        state.RegenAccumulator = 0.0F;
+
+        ApplyFoodHealthProfile(player, state);
+
+        int maxHealthGain = Math.Max(0, player.maxHealth - previousMaxHealth);
+        if (maxHealthGain > 0 && player.health > 0)
+        {
+            player.health = Math.Min(player.maxHealth, player.health + maxHealthGain);
+            player.lastHealth = Math.Min(player.maxHealth, player.lastHealth + maxHealthGain);
+            player.hearts = player.maxHealth / 2;
+        }
+    }
+
+    private static bool ShouldBlockFoodConsume(EntityPlayer player, int foodItemId)
+    {
+        PlayerFoodState state = GetOrCreatePlayerFoodState(player);
+        RemoveExpiredEffects(state);
+
+        if (ContainsActiveFood(state, foodItemId))
+        {
+            return true;
+        }
+
+        return state.ActiveFoods.Count >= ExtraHudBoxCount;
+    }
+
+    private static bool ContainsActiveFood(PlayerFoodState state, int foodItemId)
+    {
+        for (int i = 0; i < state.ActiveFoods.Count; i++)
+        {
+            if (state.ActiveFoods[i].ItemId == foodItemId)
             {
-                RecentFoodItemIds.RemoveAt(0);
+                return true;
             }
         }
 
-        return result;
+        return false;
     }
+
+    private static void TickFoodEffects(EntityPlayer player, PlayerFoodState state)
+    {
+        if (player.health <= 0)
+        {
+            state.ActiveFoods.Clear();
+            state.RegenAccumulator = 0.0F;
+            ApplyFoodHealthProfile(player, state);
+            return;
+        }
+
+        for (int i = 0; i < state.ActiveFoods.Count; i++)
+        {
+            state.ActiveFoods[i].RemainingTicks--;
+        }
+
+        RemoveExpiredEffects(state);
+        ApplyFoodHealthProfile(player, state);
+
+        float totalRegenPerSecond = GetTotalRegenPerSecond(state);
+        if (totalRegenPerSecond <= 0.0F || player.health >= player.maxHealth)
+        {
+            state.RegenAccumulator = 0.0F;
+            return;
+        }
+
+        state.RegenAccumulator += totalRegenPerSecond / TicksPerSecond;
+        while (state.RegenAccumulator >= 1.0F && player.health < player.maxHealth)
+        {
+            player.heal(1);
+            state.RegenAccumulator -= 1.0F;
+        }
+
+        if (player.health >= player.maxHealth)
+        {
+            state.RegenAccumulator = 0.0F;
+        }
+    }
+
+    private static float GetTotalRegenPerSecond(PlayerFoodState state)
+    {
+        float total = 0.0F;
+        for (int i = 0; i < state.ActiveFoods.Count; i++)
+        {
+            int itemId = state.ActiveFoods[i].ItemId;
+            if (FoodDefinitions.TryGetValue(itemId, out FoodDefinition definition))
+            {
+                total += definition.RegenPerSecond;
+            }
+        }
+
+        return total;
+    }
+
+    private static void RemoveExpiredEffects(PlayerFoodState state)
+    {
+        for (int i = state.ActiveFoods.Count - 1; i >= 0; i--)
+        {
+            if (state.ActiveFoods[i].RemainingTicks <= 0)
+            {
+                state.ActiveFoods.RemoveAt(i);
+            }
+        }
+    }
+
+    private static void ApplyFoodHealthProfile(EntityPlayer player, PlayerFoodState state)
+    {
+        player.maxHealth = CalculateMaxHealth(state);
+        if (player.health > player.maxHealth)
+        {
+            player.health = player.maxHealth;
+        }
+
+        if (player.lastHealth > player.maxHealth)
+        {
+            player.lastHealth = player.maxHealth;
+        }
+
+        if (player.hearts > player.maxHealth)
+        {
+            player.hearts = player.maxHealth;
+        }
+    }
+
+    private static int CalculateMaxHealth(PlayerFoodState state)
+    {
+        int bonusHealth = 0;
+        for (int i = 0; i < state.ActiveFoods.Count; i++)
+        {
+            int itemId = state.ActiveFoods[i].ItemId;
+            if (FoodDefinitions.TryGetValue(itemId, out FoodDefinition definition))
+            {
+                bonusHealth += definition.BonusHealth;
+            }
+        }
+
+        int computedMaxHealth = BaseMaxHealth + bonusHealth;
+        if (computedMaxHealth > AbsoluteMaxHealth)
+        {
+            computedMaxHealth = AbsoluteMaxHealth;
+        }
+
+        if (computedMaxHealth < BaseMaxHealth)
+        {
+            computedMaxHealth = BaseMaxHealth;
+        }
+
+        return computedMaxHealth;
+    }
+
+    private static PlayerFoodState GetOrCreatePlayerFoodState(EntityPlayer player)
+    {
+        if (!PlayerFoodStates.TryGetValue(player, out PlayerFoodState? state))
+        {
+            state = new PlayerFoodState();
+            PlayerFoodStates[player] = state;
+        }
+
+        return state;
+    }
+
+    private static void WriteFoodStateToNbt(PlayerFoodState state, NBTTagCompound nbt)
+    {
+        RemoveExpiredEffects(state);
+
+        NBTTagList foodsTagList = new();
+        for (int i = 0; i < state.ActiveFoods.Count; i++)
+        {
+            ActiveFoodEffect activeFood = state.ActiveFoods[i];
+            NBTTagCompound foodTag = new();
+            foodTag.SetInteger(FoodItemIdNbtKey, activeFood.ItemId);
+            foodTag.SetInteger(FoodTicksNbtKey, activeFood.RemainingTicks);
+            foodsTagList.SetTag(foodTag);
+        }
+
+        nbt.SetTag(FoodsNbtKey, foodsTagList);
+        nbt.SetFloat(RegenNbtKey, state.RegenAccumulator);
+    }
+
+    private static void ReadFoodStateFromNbt(PlayerFoodState state, NBTTagCompound nbt)
+    {
+        state.ActiveFoods.Clear();
+        state.RegenAccumulator = Math.Max(0.0F, nbt.GetFloat(RegenNbtKey));
+
+        if (!nbt.HasKey(FoodsNbtKey))
+        {
+            return;
+        }
+
+        NBTTagList foodsTagList = nbt.GetTagList(FoodsNbtKey);
+        for (int i = 0; i < foodsTagList.TagCount(); i++)
+        {
+            if (foodsTagList.TagAt(i) is not NBTTagCompound foodTag)
+            {
+                continue;
+            }
+
+            int itemId = foodTag.GetInteger(FoodItemIdNbtKey);
+            int remainingTicks = foodTag.GetInteger(FoodTicksNbtKey);
+            if (remainingTicks <= 0 || !FoodDefinitions.ContainsKey(itemId) || ContainsActiveFood(state, itemId))
+            {
+                continue;
+            }
+
+            if (state.ActiveFoods.Count >= ExtraHudBoxCount)
+            {
+                break;
+            }
+
+            state.ActiveFoods.Add(new ActiveFoodEffect(itemId, remainingTicks));
+        }
+    }
+
+    private static string FormatRemainingTime(int remainingTicks)
+    {
+        int remainingSeconds = Math.Max(0, (remainingTicks + TicksPerSecond - 1) / TicksPerSecond);
+        int remainingMinutes = (remainingSeconds + 59) / 60;
+        return remainingMinutes.ToString();
+    }
+
+    private static Dictionary<int, FoodDefinition> CreateFoodDefinitions()
+    {
+        return new Dictionary<int, FoodDefinition>
+        {
+            [Item.Apple.id] = new FoodDefinition(2, 0.5F, 120),
+            [Item.MushroomStew.id] = new FoodDefinition(6, 1.5F, 240),
+            [Item.Bread.id] = new FoodDefinition(4, 1.0F, 180),
+            [Item.RawPorkchop.id] = new FoodDefinition(4, 0.75F, 120),
+            [Item.CookedPorkchop.id] = new FoodDefinition(8, 1.5F, 300),
+            [Item.GoldenApple.id] = new FoodDefinition(20, 4.0F, 600),
+            [Item.RawFish.id] = new FoodDefinition(2, 0.5F, 120),
+            [Item.CookedFish.id] = new FoodDefinition(6, 1.25F, 240),
+            [Item.Cookie.id] = new FoodDefinition(2, 0.4F, 90)
+        };
+    }
+
+    private sealed class PlayerFoodState
+    {
+        public readonly List<ActiveFoodEffect> ActiveFoods = [];
+        public float RegenAccumulator;
+    }
+
+    private sealed class ActiveFoodEffect(int itemId, int remainingTicks)
+    {
+        public int ItemId = itemId;
+        public int RemainingTicks = remainingTicks;
+    }
+
+    private readonly record struct FoodDefinition(int BonusHealth, float RegenPerSecond, int DurationSeconds);
 }
