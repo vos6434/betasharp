@@ -84,64 +84,21 @@ internal class SeeAllItemsOverlay
                 Console.WriteLine("SeeAllItemsOverlay: failed to load embedded resource: " + ex);
             }
 
-            // if not loaded from assembly, look for the button PNG in a few likely places: cwd/assets, app base, repo assets, then mod path
+            // if not loaded from assembly, only try the mod file path (no other fallbacks)
             if (customButtonTextureId < 0)
             {
-                string cwdAsset = System.IO.Path.Combine(Directory.GetCurrentDirectory(), "assets", "gui", "seeallitems_buttons.png");
-                string baseAsset = System.IO.Path.Combine(AppContext.BaseDirectory ?? "", "assets", "gui", "seeallitems_buttons.png");
-                string repoAsset = System.IO.Path.Combine("assets", "gui", "seeallitems_buttons.png");
-
-                string foundPath = null;
-                if (File.Exists(cwdAsset)) foundPath = cwdAsset;
-                else if (!string.IsNullOrEmpty(baseAsset) && File.Exists(baseAsset)) foundPath = baseAsset;
-                else if (File.Exists(repoAsset)) foundPath = repoAsset;
-                else if (File.Exists(outPath)) foundPath = outPath;
-
-                // prefer explicit assets/gui location (you moved the PNG there), then mods folder, then generate
-                if (foundPath != null && !System.IO.Path.GetFullPath(foundPath).Equals(System.IO.Path.GetFullPath(outPath), StringComparison.OrdinalIgnoreCase))
+                if (File.Exists(outPath))
                 {
-                    var img = Image.Load<Rgba32>(foundPath);
+                    var img = Image.Load<Rgba32>(outPath);
                     customButtonTextureHeight = img.Height;
                     customButtonTextureWidth = img.Width;
                     customButtonTextureId = mc.textureManager.Load(img);
+                    Console.WriteLine($"SeeAllItemsOverlay: loaded button PNG from file '{outPath}', w={customButtonTextureWidth}, h={customButtonTextureHeight}");
                 }
                 else
                 {
-                    // generate a compact button texture matching the current button height (12px) and a 1px bottom border
-                    int btnWidth = 200;
-                    int btnH = 12; // match overlay button height
-                    int step = btnH + 1; // include bottom border row
-                    int normalY = 46 + 1 * step;
-                    int hoverY = 46 + 2 * step;
-                    int texW = btnWidth;
-                    int texH = hoverY + btnH + 1;
-
-                    var img = new Image<Rgba32>(texW, texH);
-                    img.Mutate(ctx =>
-                    {
-                        ctx.Clear(new Rgba32(0, 0, 0, 0));
-                        // normal state: dark gray with light top edge
-                        ctx.Fill(new Rgba32(0x40, 0x40, 0x40), new SixLabors.ImageSharp.Rectangle(0, normalY, btnWidth, btnH));
-                        ctx.Fill(new Rgba32(0x80, 0x80, 0x80), new SixLabors.ImageSharp.Rectangle(0, normalY, btnWidth, 2));
-                        // hover state: lighter
-                        ctx.Fill(new Rgba32(0x60, 0x60, 0x60), new SixLabors.ImageSharp.Rectangle(0, hoverY, btnWidth, btnH));
-                        ctx.Fill(new Rgba32(0xA0, 0xA0, 0xA0), new SixLabors.ImageSharp.Rectangle(0, hoverY, btnWidth, 2));
-                        // 1px bottom border row (black)
-                        ctx.Fill(new Rgba32(0, 0, 0), new SixLabors.ImageSharp.Rectangle(0, normalY + btnH, btnWidth, 1));
-                        ctx.Fill(new Rgba32(0, 0, 0), new SixLabors.ImageSharp.Rectangle(0, hoverY + btnH, btnWidth, 1));
-                    });
-
-                    // save to mods folder so the PNG is available in the workspace (overwrite existing mod PNG)
-                    try { img.Save(outPath); } catch (Exception ex) { Console.WriteLine("SeeAllItemsOverlay: failed to save button PNG: " + ex); }
-
-                    // save to mods folder so the PNG is available in the workspace (overwrite existing mod PNG)
-                    try { img.Save(outPath); } catch (Exception ex) { Console.WriteLine("SeeAllItemsOverlay: failed to save button PNG: " + ex); }
-
-                    // record height and load into GL
-                    // record width/height and load into GL
-                    customButtonTextureHeight = img.Height;
-                    customButtonTextureWidth = img.Width;
-                    customButtonTextureId = mc.textureManager.Load(img);
+                    Console.WriteLine("SeeAllItemsOverlay: no custom button PNG found; buttons will be drawn without texture.");
+                    customButtonTextureId = -1;
                 }
             }
         }
@@ -410,35 +367,33 @@ internal class SeeAllItemsOverlay
             // places rows starting at 46 with step=(h+1) and normal/hover at 1*step/2*step.
             // Vanilla's /gui/gui.png uses rows at ~66 and 86 (20px step).
             int v;
-            if (customButtonTextureId >= 0)
+            // Only use our custom texture (no vanilla fallback). If custom texture is large (>=200h) assume vanilla layout rows at 66/86,
+            // otherwise treat as compact where top row=normal and second row=hover.
+            if (customButtonTextureId >= 0 && customButtonTextureHeight > 0)
             {
                 if (customButtonTextureHeight >= 200)
                 {
-                    // vanilla-style large texture layout
                     int baseV = 66;
                     int hoverOffset = 20;
                     v = baseV + (isHovered ? hoverOffset : 0);
                 }
                 else
                 {
-                    // compact generated layout (tight-packed: top row = normal, second row = hover)
                     int baseV = 0;
-                    int step = h + 1; // includes 1px bottom border per row
+                    int step = h + 1;
                     v = baseV + (isHovered ? step : 0);
                 }
             }
             else
             {
-                // using the game's gui.png; follow vanilla offsets
-                int baseV = 66;
-                int hoverOffset = 20;
-                v = baseV + (isHovered ? hoverOffset : 0);
+                // no custom texture loaded; skip textured drawing by setting v to 0
+                v = 0;
             }
 
             // debug: print which texture/height and v being used (useful for runtime verification)
             try { Console.WriteLine($"SeeAllItemsOverlay: DrawButton textureId={customButtonTextureId}, texW={customButtonTextureWidth}, texH={customButtonTextureHeight}, v={v}, isHovered={isHovered}"); } catch { }
 
-            // If we have a custom (non-vanilla) texture, compute UVs using its real dimensions
+            // If we have a custom texture, compute UVs using its real dimensions
             if (customButtonTextureId >= 0 && customButtonTextureWidth > 0 && customButtonTextureHeight > 0)
             {
                 // normalized UV scale
@@ -459,12 +414,11 @@ internal class SeeAllItemsOverlay
                 tess.addVertexWithUV(x + w, y + 0, 0.0, (double)((uRight + (w - half)) * fU), (double)((v + 0) * fV));
                 tess.addVertexWithUV(x + half, y + 0, 0.0, (double)((uRight + 0) * fU), (double)((v + 0) * fV));
                 tess.draw();
-            }
+                }
             else
             {
-                // request one extra pixel of texture height to avoid a 1px bottom-crop on small buttons
-                parent.DrawTexturedModalRect(x, y, 0, v, half, h + 1);
-                parent.DrawTexturedModalRect(x + half, y, 200 - half, v, w - half, h + 1);
+                // no custom texture: draw a simple filled rect as a non-textured button background
+                DrawFilledRect(x, y, x + w, y + h, 0x80404040);
             }
 
             // draw label centered vertically with slight padding
