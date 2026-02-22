@@ -124,16 +124,17 @@ internal class SeeAllItemsOverlay
         DrawFilledRect(panelX, panelY, panelX + panelW, panelY + panelH, 0x40000000);
 
         // initialize search field to live inside the overlay panel (bottom inside panel)
-        if (searchField == null || searchField.GetType() == null)
-        {
-            int sfW = Math.Max(100, panelW - 12);
-            int sfX = panelX + 6;
-            int sfY = panelY + panelH - 26;
-            searchField = new GuiTextField(parent, parent.FontRenderer, sfX, sfY, sfW, 20, "");
-        }
+        // place the search field flush with the bottom of the panel (no gap)
+            if (searchField == null || searchField.GetType() == null)
+            {
+                int sfW = Math.Max(100, panelW - 12);
+                int sfX = panelX + 6;
+                int sfY = panelY + panelH - 22; // raise 1px so the bottom isn't cut off
+                searchField = new GuiTextField(parent, parent.FontRenderer, sfX, sfY, sfW, 20, "");
+            }
 
-        // top nav
-        int navY = panelY + 4;
+        // top nav (moved 1px down so it visually touches but doesn't sit flush over the border)
+        int navY = panelY + 1;
         int btnW = 36;
         int btnH = 13; // increased by 1px
         DrawButton(parent, panelX + 6, navY, btnW, btnH, "Back", mouseX, mouseY);
@@ -159,8 +160,8 @@ internal class SeeAllItemsOverlay
         // inner panel background to make alignment clear (semi-transparent so underlying background shows)
         // limit the inner background to the area above the search field so the grid doesn't draw behind it
         int contentHeight = rows * cellSize + Math.Max(0, (rows - 1) * padding);
-        int innerBottom = startY + contentHeight + 6; // small bottom margin
-        DrawFilledRect(panelX + 2, slotTop - 2, panelX + panelW - 2, Math.Min(innerBottom, panelY + panelH - 6), 0x80000000);
+        int innerBottom = startY + contentHeight; // stop immediately above the search field
+        DrawFilledRect(panelX + 2, slotTop - 2, panelX + panelW - 2, Math.Min(innerBottom, panelY + panelH - 22), 0x80000000);
 
         // determine hovered stack (to draw highlight) using same hit-testing
         var hoveredStackForHighlight = GetHoveredItem(parent, mouseX, mouseY, panelX, panelY, panelW, panelH);
@@ -234,10 +235,10 @@ internal class SeeAllItemsOverlay
         {
             try { searchField.updateCursorCounter(); } catch { }
 
-            int sfW = Math.Max(100, panelW - 12);
-            int sfX = panelX + 6;
-            int sfY = panelY + panelH - 26;
-            int sfH = 20;
+                int sfW = Math.Max(100, panelW - 12);
+                int sfX = panelX + 6;
+                int sfY = panelY + panelH - 22; // raise 1px to avoid cut-off
+                int sfH = 20;
 
             // keep the GuiTextField's private position/size in sync with the overlay panel
             try
@@ -303,7 +304,7 @@ internal class SeeAllItemsOverlay
         // top of the search field, then divide by cell height+padding.
         int slotTop = panelY + 24;
         int startY = slotTop + 6;
-        int searchTop = panelY + panelH - 26; // search field Y in RenderOverlay
+        int searchTop = panelY + panelH - 27; // search field Y in RenderOverlay
         int avail = searchTop - startY;
         int cellFull = cellSize + padding;
         if (avail < cellSize) return 1;
@@ -318,8 +319,8 @@ internal class SeeAllItemsOverlay
         // prefer full window height for the overlay panel
         panelY = 0;
         panelH = h;
-        // default place at right edge
-        panelX = w - panelW - 10;
+        // default place at right edge (flush with the right side)
+        panelX = w - panelW;
         try
         {
             // attempt to read protected _xSize/_ySize from the parent (GuiContainer) via reflection
@@ -344,7 +345,8 @@ internal class SeeAllItemsOverlay
                 // inventory, reduce the panel width so its left edge sits at least `margin`
                 // pixels to the right of the inventory right edge. Do not move the panel left.
                 int desiredW = panelW;
-                int maxAllowedW = w - guiRight - margin - 10; // solves: w - panelW -10 >= guiRight + margin
+                // allow the panel to sit flush on the right; ensure left edge stays margin pixels right of the inventory
+                int maxAllowedW = w - guiRight - margin; // no extra 10px gap
                 if (maxAllowedW < 0) maxAllowedW = 0;
                 if (maxAllowedW < desiredW)
                 {
@@ -356,7 +358,8 @@ internal class SeeAllItemsOverlay
                     panelW = desiredW;
                 }
 
-                panelX = w - panelW - 10;
+                // keep panel flush to the right edge
+                panelX = w - panelW;
                 // panel stays full height (panelY=0, panelH=h)
             }
         }
@@ -568,8 +571,8 @@ internal class SeeAllItemsOverlay
         int w = parent.Width;
         int h = parent.Height;
         GetPanelBounds(parent, out int panelX, out int panelY, out int panelW, out int panelH);
-        int navY = panelY + 4; int btnW = 36;
-        int btnH = 12;
+        int navY = panelY + 1; int btnW = 36;
+        int btnH = 13;
         if (x >= panelX + 6 && x <= panelX + 6 + btnW && y >= navY && y <= navY + btnH)
         {
             // back
