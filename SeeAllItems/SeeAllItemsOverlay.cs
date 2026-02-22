@@ -56,11 +56,11 @@ internal class SeeAllItemsOverlay
             searchField = new GuiTextField(parent, parent.FontRenderer, 20, h - 26, sfW, 20, "");
         }
 
-        // right panel dimensions
+        // right panel dimensions (full height, flush to top/bottom)
         int panelW = 140;
         int panelX = w - panelW - 10;
-        int panelY = 30;
-        int panelH = h - 80;
+        int panelY = 0;
+        int panelH = h;
 
         // draw background panel
         DrawPanelBackground(panelX, panelY, panelW, panelH);
@@ -262,7 +262,7 @@ internal class SeeAllItemsOverlay
         // check nav buttons
         int w = parent.Width;
         int h = parent.Height;
-        int panelW = 140; int panelX = w - panelW - 10; int panelY = 30;
+        int panelW = 140; int panelX = w - panelW - 10; int panelY = 0;
         int navY = panelY + 4; int btnW = 36;
         if (x >= panelX + 6 && x <= panelX + 6 + btnW && y >= navY && y <= navY + 14)
         {
@@ -277,7 +277,7 @@ internal class SeeAllItemsOverlay
         }
 
         // check clicks on items in grid
-        int panelH = h - 80;
+        int panelH = h;
         int rows = RowsPerPanel(panelH);
         int slotTop = panelY + 24;
         int startX = panelX + 6;
@@ -327,8 +327,8 @@ internal class SeeAllItemsOverlay
         int h = parent.Height;
         int panelW = 140;
         int panelX = w - panelW - 10;
-        int panelY = 30;
-        int panelH = h - 80;
+        int panelY = 0;
+        int panelH = h;
 
         // check search field focus as well
         if (searchField != null && searchField.IsFocused) return true;
