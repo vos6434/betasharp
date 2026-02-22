@@ -31,6 +31,9 @@ internal class SeeAllItemsOverlay
     private int columns = 4;
     private int cellSize = 16;
     private int padding = 1;
+    // shared insets used by layout and hit-testing
+    private int leftInset = 1;
+    private int rightInset = 2;
     private int page = 0;
     // runtime-generated custom button texture id (if created)
     private int customButtonTextureId = -1;
@@ -123,12 +126,14 @@ internal class SeeAllItemsOverlay
         // draw semi-transparent panel background (remove dirt texture)
         DrawFilledRect(panelX, panelY, panelX + panelW, panelY + panelH, 0x40000000);
 
+        // consistent insets for GUI elements inside the panel (fields used)
+
         // initialize search field to live inside the overlay panel (bottom inside panel)
         // place the search field flush with the bottom of the panel (no gap)
             if (searchField == null || searchField.GetType() == null)
             {
-                int sfW = Math.Max(100, panelW - 12);
-                int sfX = panelX + 6;
+                int sfW = Math.Max(100, panelW - (leftInset + rightInset));
+                int sfX = panelX + leftInset;
                 int sfY = panelY + panelH - 22; // raise 1px so the bottom isn't cut off
                 searchField = new GuiTextField(parent, parent.FontRenderer, sfX, sfY, sfW, 20, "");
             }
@@ -139,9 +144,7 @@ internal class SeeAllItemsOverlay
         int btnH = 13; // increased by 1px
         DrawButton(parent, panelX + 6, navY, btnW, btnH, "Back", mouseX, mouseY);
         DrawButton(parent, panelX + panelW - 6 - btnW, navY, btnW, btnH, "Next", mouseX, mouseY);
-        // compute dynamic columns that fit inside the panel (reserve 1px left, 2px right inset)
-        int leftInset = 1;
-        int rightInset = 2;
+        // compute dynamic columns that fit inside the panel (reserve left/right insets)
         int columnsLocal = Math.Max(1, (panelW - (leftInset + rightInset) + padding) / (cellSize + padding));
         int rows = RowsPerPanel(panelY, panelH);
         string pageText = $"{page + 1}/{Math.Max(1, (int)Math.Ceiling(filtered.Count / (double)(columnsLocal * rows)))}";
@@ -237,8 +240,8 @@ internal class SeeAllItemsOverlay
         {
             try { searchField.updateCursorCounter(); } catch { }
 
-                int sfW = Math.Max(100, panelW - 12);
-                int sfX = panelX + 6;
+                int sfW = Math.Max(100, panelW - (leftInset + rightInset));
+                int sfX = panelX + leftInset;
                 int sfY = panelY + panelH - 22; // raise 1px to avoid cut-off
                 int sfH = 20;
 
@@ -327,8 +330,8 @@ internal class SeeAllItemsOverlay
         {
             // attempt to read protected _xSize/_ySize from the parent (GuiContainer) via reflection
             var t = parent.GetType();
-            System.Reflection.FieldInfo fx = null;
-            System.Reflection.FieldInfo fy = null;
+            System.Reflection.FieldInfo? fx = null;
+            System.Reflection.FieldInfo? fy = null;
             var cur = t;
             while (cur != null && (fx == null || fy == null))
             {
@@ -374,8 +377,6 @@ internal class SeeAllItemsOverlay
         int w = parent.Width;
         int slotTop = panelY + 24;
         // compute dynamic columns to match RenderOverlay
-        int leftInset = 1;
-        int rightInset = 2;
         int columnsLocal = Math.Max(1, (panelW - (leftInset + rightInset) + padding) / (cellSize + padding));
         int contentWidth = columnsLocal * cellSize + (columnsLocal - 1) * padding;
         int startX = panelX + leftInset; // left-align grid with leftInset
@@ -595,8 +596,6 @@ internal class SeeAllItemsOverlay
             int rows = RowsPerPanel(panelY, panelH);
         int slotTop = panelY + 1;
         // compute dynamic columns matching RenderOverlay
-        int leftInset = 1;
-        int rightInset = 1;
         int columnsLocal = Math.Max(1, (panelW - (leftInset + rightInset) + padding) / (cellSize + padding));
         int contentWidth2 = columnsLocal * cellSize + (columnsLocal - 1) * padding;
         int startX2 = panelX + leftInset; // left-align grid with leftInset
