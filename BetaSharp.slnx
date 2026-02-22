@@ -6,4 +6,5 @@
   <Project Path="BetaSharp.Server/BetaSharp.Server.csproj" />
   <Project Path="BetaSharp/BetaSharp.csproj" />
   <Project Path="ExampleMod\ExampleMod.csproj" Type="Classic C#" />
+  <Project Path="SeeAllItems\SeeAllItems.csproj" Type="Classic C#" />
 </Solution>
