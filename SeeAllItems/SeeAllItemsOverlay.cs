@@ -340,22 +340,23 @@ internal class SeeAllItemsOverlay
                 int ySizeVal = (int)fy.GetValue(parent)!;
                 int guiLeft = (w - xSizeVal) / 2;
                 int guiRight = guiLeft + xSizeVal;
-                int margin = 6;
+                int margin = 2; // reduced gap between inventory and overlay
                 // Keep the panel anchored to the right edge. If that would make it touch the
                 // inventory, reduce the panel width so its left edge sits at least `margin`
                 // pixels to the right of the inventory right edge. Do not move the panel left.
                 int desiredW = panelW;
                 // allow the panel to sit flush on the right; ensure left edge stays margin pixels right of the inventory
-                int maxAllowedW = w - guiRight - margin; // no extra 10px gap
-                if (maxAllowedW < 0) maxAllowedW = 0;
+                int maxAllowedW = w - guiRight - margin; // available width between guiRight+margin and screen right
+                if (maxAllowedW < 20) maxAllowedW = 20; // enforce a sensible minimum
                 if (maxAllowedW < desiredW)
                 {
-                    // shrink to avoid touching; allow very small widths if necessary
+                    // not enough room: shrink to avoid touching the inventory
                     panelW = Math.Max(20, maxAllowedW);
                 }
                 else
                 {
-                    panelW = desiredW;
+                    // enough room: expand the panel width to fill the gap up to the inventory margin
+                    panelW = maxAllowedW;
                 }
 
                 // keep panel flush to the right edge
