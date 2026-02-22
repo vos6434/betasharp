@@ -1427,11 +1427,16 @@ public class HungerModBase : ModBase
             GuiTextFieldYField ??= typeof(GuiTextField).GetField("_yPos", BindingFlags.Instance | BindingFlags.NonPublic);
 
             // Create a GuiSlot to host the general option rows so we get native scrolling
-            int slotTop = _optionsStartY;
+            // Add a small top padding so the first input has the same gap as the bottom
+            int slotTop = _optionsStartY + 4;
             // Add bottom padding so the last input doesn't touch the slot edge
-            int slotBottom = _optionsStartY + totalFieldsHeight + 8;
-            // Keep row height consistent with layout but allow a little extra slot padding
-            int slotRowHeight = fieldHeight + spacing;
+            int slotBottom = _optionsStartY + totalFieldsHeight + 20;
+            // Add an extra per-row gap so input boxes have visible separation
+            int extraRowGap = 6;
+            // Keep row height consistent with layout but include the extra per-row gap
+            int slotRowHeight = fieldHeight + spacing + extraRowGap;
+            // Expand slotBottom to accommodate the additional gaps so the initial visible area is sized reasonably
+            slotBottom += extraRowGap * Math.Max(0, numFields - 1);
             _generalSlot = new GeneralOptionsSlot(Minecraft.INSTANCE, Width, Height, slotTop, slotBottom, slotRowHeight, this);
 
             // Move the slot's scrollbar to the right of the reset buttons by tweaking the slot's internal width
@@ -1452,16 +1457,21 @@ public class HungerModBase : ModBase
             catch { }
 
             _controlList.Clear();
-            // Per-field reset buttons
-            _controlList.Add(new GuiButton(BtnResetExtraCount, resetX, _optionsStartY, resetWidth, fieldHeight, "Reset"));
-            _controlList.Add(new GuiButton(BtnResetBoxSize, resetX, _optionsStartY + (fieldHeight + spacing) * 1, resetWidth, fieldHeight, "Reset"));
-            _controlList.Add(new GuiButton(BtnResetIconSize, resetX, _optionsStartY + (fieldHeight + spacing) * 2, resetWidth, fieldHeight, "Reset"));
-            _controlList.Add(new GuiButton(BtnResetBoxSpacing, resetX, _optionsStartY + (fieldHeight + spacing) * 3, resetWidth, fieldHeight, "Reset"));
+            // Per-field reset buttons (align with slot rows)
+            // Slot draws rows at _top + 4; add the same offset so buttons align
+            // Slight upward nudge so button top matches textbox border visually
+            int resetBaseY = slotTop + 2;
+            _controlList.Add(new GuiButton(BtnResetExtraCount, resetX, resetBaseY, resetWidth, fieldHeight, "Reset"));
+            _controlList.Add(new GuiButton(BtnResetBoxSize, resetX, resetBaseY + (fieldHeight + spacing) * 1, resetWidth, fieldHeight, "Reset"));
+            _controlList.Add(new GuiButton(BtnResetIconSize, resetX, resetBaseY + (fieldHeight + spacing) * 2, resetWidth, fieldHeight, "Reset"));
+            _controlList.Add(new GuiButton(BtnResetBoxSpacing, resetX, resetBaseY + (fieldHeight + spacing) * 3, resetWidth, fieldHeight, "Reset"));
 
             // Bottom actions: Reset All and Done
             int btnW = 150;
-            _controlList.Add(new GuiButton(BtnResetAll, centerX - btnW - 6, _optionsStartY + totalFieldsHeight + 20, btnW, 20, "Reset All"));
-            _controlList.Add(new GuiButton(BtnDone, centerX + 6, _optionsStartY + totalFieldsHeight + 20, btnW, 20, "Done"));
+            // Place action buttons at the bottom of the screen for consistent UI
+            int bottomY = Height - 40;
+            _controlList.Add(new GuiButton(BtnResetAll, centerX - btnW - 6, bottomY, btnW, 20, "Reset All"));
+            _controlList.Add(new GuiButton(BtnDone, centerX + 6, bottomY, btnW, 20, "Done"));
         }
 
         protected override void ActionPerformed(GuiButton button)
