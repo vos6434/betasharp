@@ -1428,7 +1428,9 @@ public class HungerModBase : ModBase
 
             // Create a GuiSlot to host the general option rows so we get native scrolling
             int slotTop = _optionsStartY;
-            int slotBottom = _optionsStartY + totalFieldsHeight;
+            // Add bottom padding so the last input doesn't touch the slot edge
+            int slotBottom = _optionsStartY + totalFieldsHeight + 8;
+            // Keep row height consistent with layout but allow a little extra slot padding
             int slotRowHeight = fieldHeight + spacing;
             _generalSlot = new GeneralOptionsSlot(Minecraft.INSTANCE, Width, Height, slotTop, slotBottom, slotRowHeight, this);
 
@@ -1440,7 +1442,9 @@ public class HungerModBase : ModBase
                 if (slotWidthField != null && slotRightField != null)
                 {
                     int desiredScrollX = resetX + resetWidth + 8; // a few pixels right of reset buttons
-                    int newWidth = Math.Max(Width, 2 * (desiredScrollX - 124));
+                    int requiredWidth = 2 * (desiredScrollX - 124);
+                    // Clamp the computed width so we don't expand the slot outside the screen bounds
+                    int newWidth = Math.Clamp(requiredWidth, 200, Width);
                     slotWidthField.SetValue(_generalSlot, newWidth);
                     slotRightField.SetValue(_generalSlot, newWidth);
                 }
