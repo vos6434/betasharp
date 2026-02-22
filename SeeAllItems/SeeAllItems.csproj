@@ -11,8 +11,20 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\BetaSharp.Client\BetaSharp.Client.csproj" />
     <ProjectReference Include="..\BetaSharp\BetaSharp.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Use compiled BetaSharp.Client DLL if available to avoid circular project refs -->
+    <Reference Include="BetaSharp.Client" Condition="Exists('..\BetaSharp.Client\bin\$(Configuration)\net10.0\BetaSharp.Client.dll')">
+      <HintPath>..\BetaSharp.Client\bin\$(Configuration)\net10.0\BetaSharp.Client.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Embed only if the file exists in the mod folder to avoid build errors when it's not present locally -->
+    <EmbeddedResource Include="seeallitems_buttons.png" Condition="Exists('seeallitems_buttons.png')" />
   </ItemGroup>
 
   <ItemGroup>
@@ -23,6 +35,7 @@
     <PackageReference Include="MonoMod.RuntimeDetour" Version="25.3.3" PrivateAssets="none">
       <PrivateAssets>none</PrivateAssets>
     </PackageReference>
+    <PackageReference Include="SixLabors.ImageSharp.Drawing" Version="2.1.7" />
   </ItemGroup>
 
   <Target Name="CopyModDllToModsFolder" AfterTargets="Build" Condition="'$(DesignTimeBuild)' != 'true'">

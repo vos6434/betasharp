@@ -8,6 +8,10 @@ using BetaSharp.Client.Rendering.Core;
 using BetaSharp.Client.Rendering.Items;
 using BetaSharp;
 using Silk.NET.OpenGL.Legacy;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing;
+using SixLabors.ImageSharp.Drawing.Processing;
 using BetaSharp.Items;
 using BetaSharp.Modding;
 
@@ -28,6 +32,11 @@ internal class SeeAllItemsOverlay
     private int cellSize = 20;
     private int padding = 6;
     private int page = 0;
+    // runtime-generated custom button texture id (if created)
+    private int customButtonTextureId = -1;
+    // height of the loaded custom button texture (used to select v offsets)
+    private int customButtonTextureHeight = 0;
+    private int customButtonTextureWidth = 0;
 
     // Slot handles vertical rows; we'll draw multiple columns per row
     private ItemGridSlot? slot;
@@ -44,6 +53,103 @@ internal class SeeAllItemsOverlay
 
         filtered = new List<ItemStack>(allItems);
         Console.WriteLine($"SeeAllItemsOverlay: constructed, totalItems={allItems.Count}");
+
+        // create or load a small gui texture (256x256) with two button state rows
+        try
+        {
+            string outDir = System.IO.Path.Combine("mods", "betasharp", "SeeAllItems");
+            Directory.CreateDirectory(outDir);
+            string outPath = System.IO.Path.Combine(outDir, "seeallitems_buttons.png");
+
+            // try to load embedded resource from this assembly first (packed into the mod DLL)
+            try
+            {
+                var asm = typeof(SeeAllItemsOverlay).Assembly;
+                var res = asm.GetManifestResourceNames().FirstOrDefault(n => n.EndsWith("seeallitems_buttons.png", StringComparison.OrdinalIgnoreCase));
+                if (res != null)
+                {
+                    using var s = asm.GetManifestResourceStream(res);
+                    if (s != null)
+                    {
+                        var imgRes = Image.Load<Rgba32>(s);
+                        customButtonTextureHeight = imgRes.Height;
+                        customButtonTextureWidth = imgRes.Width;
+                        customButtonTextureId = mc.textureManager.Load(imgRes);
+                        Console.WriteLine($"SeeAllItemsOverlay: loaded button PNG from assembly resource '{res}', h={customButtonTextureHeight}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("SeeAllItemsOverlay: failed to load embedded resource: " + ex);
+            }
+
+            // if not loaded from assembly, look for the button PNG in a few likely places: cwd/assets, app base, repo assets, then mod path
+            if (customButtonTextureId < 0)
+            {
+                string cwdAsset = System.IO.Path.Combine(Directory.GetCurrentDirectory(), "assets", "gui", "seeallitems_buttons.png");
+                string baseAsset = System.IO.Path.Combine(AppContext.BaseDirectory ?? "", "assets", "gui", "seeallitems_buttons.png");
+                string repoAsset = System.IO.Path.Combine("assets", "gui", "seeallitems_buttons.png");
+
+                string foundPath = null;
+                if (File.Exists(cwdAsset)) foundPath = cwdAsset;
+                else if (!string.IsNullOrEmpty(baseAsset) && File.Exists(baseAsset)) foundPath = baseAsset;
+                else if (File.Exists(repoAsset)) foundPath = repoAsset;
+                else if (File.Exists(outPath)) foundPath = outPath;
+
+                // prefer explicit assets/gui location (you moved the PNG there), then mods folder, then generate
+                if (foundPath != null && !System.IO.Path.GetFullPath(foundPath).Equals(System.IO.Path.GetFullPath(outPath), StringComparison.OrdinalIgnoreCase))
+                {
+                    var img = Image.Load<Rgba32>(foundPath);
+                    customButtonTextureHeight = img.Height;
+                    customButtonTextureWidth = img.Width;
+                    customButtonTextureId = mc.textureManager.Load(img);
+                }
+                else
+                {
+                    // generate a compact button texture matching the current button height (12px) and a 1px bottom border
+                    int btnWidth = 200;
+                    int btnH = 12; // match overlay button height
+                    int step = btnH + 1; // include bottom border row
+                    int normalY = 46 + 1 * step;
+                    int hoverY = 46 + 2 * step;
+                    int texW = btnWidth;
+                    int texH = hoverY + btnH + 1;
+
+                    var img = new Image<Rgba32>(texW, texH);
+                    img.Mutate(ctx =>
+                    {
+                        ctx.Clear(new Rgba32(0, 0, 0, 0));
+                        // normal state: dark gray with light top edge
+                        ctx.Fill(new Rgba32(0x40, 0x40, 0x40), new SixLabors.ImageSharp.Rectangle(0, normalY, btnWidth, btnH));
+                        ctx.Fill(new Rgba32(0x80, 0x80, 0x80), new SixLabors.ImageSharp.Rectangle(0, normalY, btnWidth, 2));
+                        // hover state: lighter
+                        ctx.Fill(new Rgba32(0x60, 0x60, 0x60), new SixLabors.ImageSharp.Rectangle(0, hoverY, btnWidth, btnH));
+                        ctx.Fill(new Rgba32(0xA0, 0xA0, 0xA0), new SixLabors.ImageSharp.Rectangle(0, hoverY, btnWidth, 2));
+                        // 1px bottom border row (black)
+                        ctx.Fill(new Rgba32(0, 0, 0), new SixLabors.ImageSharp.Rectangle(0, normalY + btnH, btnWidth, 1));
+                        ctx.Fill(new Rgba32(0, 0, 0), new SixLabors.ImageSharp.Rectangle(0, hoverY + btnH, btnWidth, 1));
+                    });
+
+                    // save to mods folder so the PNG is available in the workspace (overwrite existing mod PNG)
+                    try { img.Save(outPath); } catch (Exception ex) { Console.WriteLine("SeeAllItemsOverlay: failed to save button PNG: " + ex); }
+
+                    // save to mods folder so the PNG is available in the workspace (overwrite existing mod PNG)
+                    try { img.Save(outPath); } catch (Exception ex) { Console.WriteLine("SeeAllItemsOverlay: failed to save button PNG: " + ex); }
+
+                    // record height and load into GL
+                    // record width/height and load into GL
+                    customButtonTextureHeight = img.Height;
+                    customButtonTextureWidth = img.Width;
+                    customButtonTextureId = mc.textureManager.Load(img);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("SeeAllItemsOverlay: failed to create/load custom button texture: " + ex);
+            customButtonTextureId = -1;
+        }
     }
 
     public void RenderOverlay(GuiScreen parent, int mouseX, int mouseY, float partialTicks)
@@ -75,10 +181,12 @@ internal class SeeAllItemsOverlay
         // top nav
         int navY = panelY + 4;
         int btnW = 36;
-        DrawButton(panelX + 6, navY, btnW, 14, "Back");
-        DrawButton(panelX + panelW - 6 - btnW, navY, btnW, 14, "Next");
-        string pageText = $"{page + 1}/{Math.Max(1, (int)Math.Ceiling(filtered.Count / (double)(columns * RowsPerPanel(panelH))))}";
-        Gui.DrawString(parent.FontRenderer, pageText, panelX + panelW / 2 - parent.FontRenderer.GetStringWidth(pageText) / 2, navY + 2, 0xFFFFFF);
+        int btnH = 13; // increased by 1px
+        DrawButton(parent, panelX + 6, navY, btnW, btnH, "Back", mouseX, mouseY);
+        DrawButton(parent, panelX + panelW - 6 - btnW, navY, btnW, btnH, "Next", mouseX, mouseY);
+        string pageText = $"{page + 1}/{Math.Max(1, (int)Math.Ceiling(filtered.Count / (double)(columns * RowsPerPanel(panelH))))}";        
+        int pageTextY = navY + (btnH - 8) / 2; // font height 8
+        Gui.DrawCenteredString(parent.FontRenderer, pageText, panelX + panelW / 2, pageTextY, 0xFFFFFF);
 
         // draw items manually into the panel grid (avoid GuiSlot centering logic)
         int rows = RowsPerPanel(panelH);
@@ -278,11 +386,94 @@ internal class SeeAllItemsOverlay
         GLManager.GL.Disable(GLEnum.Blend);
     }
 
-    private void DrawButton(int x, int y, int w, int h, string text)
+    private void DrawButton(GuiScreen parent, int x, int y, int w, int h, string text, int mouseX, int mouseY)
     {
-        // make nav buttons semi-transparent so panel shows through
-        DrawFilledRect(x, y, x + w, y + h, 0x80202020);
-        Gui.DrawString(mc.fontRenderer, text, x + 4, y + 2, 0xFFFFFF);
+        // draw using the game's button texture from /gui/gui.png to match vanilla
+        try
+        {
+            if (customButtonTextureId >= 0)
+            {
+                GLManager.GL.BindTexture(GLEnum.Texture2D, (uint)customButtonTextureId);
+            }
+            else
+            {
+                GLManager.GL.BindTexture(GLEnum.Texture2D, (uint)mc.textureManager.GetTextureId("/gui/gui.png"));
+            }
+            GLManager.GL.Color4(1.0F, 1.0F, 1.0F, 1.0F);
+
+            bool isHovered = mouseX >= x && mouseY >= y && mouseX < x + w && mouseY < y + h;
+            int hoverState = (!isHovered) ? 1 : 2; // 1 = normal, 2 = hovered; disabled not used here
+
+            // draw left and right halves to support variable width (same technique as GuiButton)
+            int half = w / 2;
+            // compute v offset based on which texture we're using. Our generated compact texture
+            // places rows starting at 46 with step=(h+1) and normal/hover at 1*step/2*step.
+            // Vanilla's /gui/gui.png uses rows at ~66 and 86 (20px step).
+            int v;
+            if (customButtonTextureId >= 0)
+            {
+                if (customButtonTextureHeight >= 200)
+                {
+                    // vanilla-style large texture layout
+                    int baseV = 66;
+                    int hoverOffset = 20;
+                    v = baseV + (isHovered ? hoverOffset : 0);
+                }
+                else
+                {
+                    // compact generated layout (tight-packed: top row = normal, second row = hover)
+                    int baseV = 0;
+                    int step = h + 1; // includes 1px bottom border per row
+                    v = baseV + (isHovered ? step : 0);
+                }
+            }
+            else
+            {
+                // using the game's gui.png; follow vanilla offsets
+                int baseV = 66;
+                int hoverOffset = 20;
+                v = baseV + (isHovered ? hoverOffset : 0);
+            }
+
+            // debug: print which texture/height and v being used (useful for runtime verification)
+            try { Console.WriteLine($"SeeAllItemsOverlay: DrawButton textureId={customButtonTextureId}, texW={customButtonTextureWidth}, texH={customButtonTextureHeight}, v={v}, isHovered={isHovered}"); } catch { }
+
+            // If we have a custom (non-vanilla) texture, compute UVs using its real dimensions
+            if (customButtonTextureId >= 0 && customButtonTextureWidth > 0 && customButtonTextureHeight > 0)
+            {
+                // normalized UV scale
+                float fU = 1.0f / customButtonTextureWidth;
+                float fV = 1.0f / customButtonTextureHeight;
+
+                Tessellator tess = Tessellator.instance;
+                tess.startDrawingQuads();
+                // left half
+                tess.addVertexWithUV(x + 0, y + (h + 1), 0.0, (double)((0 + 0) * fU), (double)((v + (h + 1)) * fV));
+                tess.addVertexWithUV(x + half, y + (h + 1), 0.0, (double)((0 + half) * fU), (double)((v + (h + 1)) * fV));
+                tess.addVertexWithUV(x + half, y + 0, 0.0, (double)((0 + half) * fU), (double)((v + 0) * fV));
+                tess.addVertexWithUV(x + 0, y + 0, 0.0, (double)((0 + 0) * fU), (double)((v + 0) * fV));
+                // right half (u starts at texture width - 200 + (200 - half) == custom width - half if custom width==200; to support arbitrary widths we map using right-side UV using (customWidth - (w-half)) etc.)
+                int uRight = Math.Max(0, customButtonTextureWidth - 200 + (200 - half));
+                tess.addVertexWithUV(x + half, y + (h + 1), 0.0, (double)((uRight + 0) * fU), (double)((v + (h + 1)) * fV));
+                tess.addVertexWithUV(x + w, y + (h + 1), 0.0, (double)((uRight + (w - half)) * fU), (double)((v + (h + 1)) * fV));
+                tess.addVertexWithUV(x + w, y + 0, 0.0, (double)((uRight + (w - half)) * fU), (double)((v + 0) * fV));
+                tess.addVertexWithUV(x + half, y + 0, 0.0, (double)((uRight + 0) * fU), (double)((v + 0) * fV));
+                tess.draw();
+            }
+            else
+            {
+                // request one extra pixel of texture height to avoid a 1px bottom-crop on small buttons
+                parent.DrawTexturedModalRect(x, y, 0, v, half, h + 1);
+                parent.DrawTexturedModalRect(x + half, y, 200 - half, v, w - half, h + 1);
+            }
+
+            // draw label centered vertically with slight padding
+            int textColor = isHovered ? 0xFFFFA0 : 0xE0E0E0;
+            Gui.DrawCenteredString(parent.FontRenderer, text, x + w / 2, y + (h - 8) / 2 + 1, (uint)textColor);
+                // draw a solid 1px black bottom border to ensure the button bottom edge is visible
+                DrawFilledRect(x, y + h, x + w, y + h + 1, 0xFF000000);
+        }
+        catch { }
     }
 
     private void DrawFilledRect(int x1, int y1, int x2, int y2, uint color)
@@ -357,13 +548,14 @@ internal class SeeAllItemsOverlay
         int h = parent.Height;
         int panelW = 140; int panelX = w - panelW - 10; int panelY = 0;
         int navY = panelY + 4; int btnW = 36;
-        if (x >= panelX + 6 && x <= panelX + 6 + btnW && y >= navY && y <= navY + 14)
+        int btnH = 12;
+        if (x >= panelX + 6 && x <= panelX + 6 + btnW && y >= navY && y <= navY + btnH)
         {
             // back
             page = Math.Max(0, page - 1);
             return true;
         }
-        if (x >= panelX + panelW - 6 - btnW && x <= panelX + panelW - 6 && y >= navY && y <= navY + 14)
+        if (x >= panelX + panelW - 6 - btnW && x <= panelX + panelW - 6 && y >= navY && y <= navY + btnH)
         {
             page = page + 1;
             return true;
