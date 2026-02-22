@@ -320,13 +320,30 @@ internal class SeeAllItemsOverlay
             string itemName = ("" + TranslationStorage.Instance.TranslateNamedKey(hovered.getItemName())).Trim();
             if (itemName.Length > 0)
             {
+                int screenW = parent.Width;
+                int screenH = parent.Height;
+                int textWidth = parent.FontRenderer.GetStringWidth(itemName);
+                int pad = 3;
+                int boxW = textWidth + pad * 2;
                 int tipX = mouseX + 12;
                 int tipY = mouseY - 12;
-                int textWidth = parent.FontRenderer.GetStringWidth(itemName);
+
+                // If tooltip would go off the right edge, flip to left side of the cursor.
+                if (tipX + boxW > screenW - 3)
+                {
+                    tipX = mouseX - 12 - boxW;
+                }
+
+                // clamp to screen bounds
+                if (tipX < 3) tipX = 3;
+                if (tipY < 3) tipY = 3;
+                int tipHeight = 8 + pad * 2;
+                if (tipY + tipHeight > screenH - 3) tipY = screenH - tipHeight - 3;
+
                 // draw tooltip background and text with depth testing disabled so tooltip always appears on top
                 try { GLManager.GL.Disable(GLEnum.DepthTest); } catch { }
                 try { GLManager.GL.DepthMask(false); } catch { }
-                DrawGradientRect(tipX - 3, tipY - 3, tipX + textWidth + 3, tipY + 8 + 3, 0xC0000000, 0xC0000000);
+                DrawGradientRect(tipX - pad, tipY - pad, tipX + textWidth + pad, tipY + 8 + pad, 0xC0000000, 0xC0000000);
                 parent.FontRenderer.DrawStringWithShadow(itemName, tipX, tipY, 0xFFFFFFFF);
                 try { GLManager.GL.DepthMask(true); } catch { }
                 try { GLManager.GL.Enable(GLEnum.DepthTest); } catch { }
