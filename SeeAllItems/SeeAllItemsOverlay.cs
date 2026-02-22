@@ -140,12 +140,13 @@ internal class SeeAllItemsOverlay
         DrawButton(parent, panelX + panelW - 6 - btnW, navY, btnW, btnH, "Next", mouseX, mouseY);
         // compute dynamic columns that fit inside the panel (leave 6px padding each side)
         int columnsLocal = Math.Max(1, (panelW - 12 + padding) / (cellSize + padding));
-        string pageText = $"{page + 1}/{Math.Max(1, (int)Math.Ceiling(filtered.Count / (double)(columnsLocal * RowsPerPanel(panelH))))}";        
+        int rows = RowsPerPanel(panelY, panelH);
+        string pageText = $"{page + 1}/{Math.Max(1, (int)Math.Ceiling(filtered.Count / (double)(columnsLocal * rows)))}";
         int pageTextY = navY + (btnH - 8) / 2; // font height 8
         Gui.DrawCenteredString(parent.FontRenderer, pageText, panelX + panelW / 2, pageTextY, 0xFFFFFF);
 
         // draw items manually into the panel grid (avoid GuiSlot centering logic)
-        int rows = RowsPerPanel(panelH);
+        // rows already computed above
         int slotTop = panelY + 24;
         int perPage = Math.Max(1, rows * columnsLocal);
         int cellFull = cellSize + padding;
@@ -156,7 +157,10 @@ internal class SeeAllItemsOverlay
         int startY = slotTop + 6;
 
         // inner panel background to make alignment clear (semi-transparent so underlying background shows)
-        DrawFilledRect(panelX + 2, slotTop - 2, panelX + panelW - 2, panelY + panelH - 6, 0x80000000);
+        // limit the inner background to the area above the search field so the grid doesn't draw behind it
+        int contentHeight = rows * cellSize + Math.Max(0, (rows - 1) * padding);
+        int innerBottom = startY + contentHeight + 6; // small bottom margin
+        DrawFilledRect(panelX + 2, slotTop - 2, panelX + panelW - 2, Math.Min(innerBottom, panelY + panelH - 6), 0x80000000);
 
         // determine hovered stack (to draw highlight) using same hit-testing
         var hoveredStackForHighlight = GetHoveredItem(parent, mouseX, mouseY, panelX, panelY, panelW, panelH);
@@ -211,8 +215,8 @@ internal class SeeAllItemsOverlay
             int wheel = Mouse.getEventDWheel();
             if (wheel != 0)
             {
-                    int rowsLocal = RowsPerPanel(panelH);
-                    int perPageWheel = Math.Max(1, rowsLocal * columnsLocal);
+                        int rowsLocal = RowsPerPanel(panelY, panelH);
+                        int perPageWheel = Math.Max(1, rowsLocal * columnsLocal);
                 int maxPages = Math.Max(1, (int)Math.Ceiling(filtered.Count / (double)perPage));
                 int old = page;
                 if (wheel > 0) page = Math.Max(0, page - 1);
@@ -293,9 +297,17 @@ internal class SeeAllItemsOverlay
         }
     }
 
-    private int RowsPerPanel(int panelH)
+    private int RowsPerPanel(int panelY, int panelH)
     {
-        return Math.Max(1, (panelH - 32) / (cellSize + padding));
+        // compute available vertical space between the top of the item area and the
+        // top of the search field, then divide by cell height+padding.
+        int slotTop = panelY + 24;
+        int startY = slotTop + 6;
+        int searchTop = panelY + panelH - 26; // search field Y in RenderOverlay
+        int avail = searchTop - startY;
+        int cellFull = cellSize + padding;
+        if (avail < cellSize) return 1;
+        return Math.Max(1, (avail + padding) / cellFull);
     }
 
     private void GetPanelBounds(GuiScreen parent, out int panelX, out int panelY, out int panelW, out int panelH)
@@ -362,7 +374,8 @@ internal class SeeAllItemsOverlay
         int startY = slotTop + 6;
         int localX = mouseX - startX;
         int localY = mouseY - startY;
-        int rows = RowsPerPanel(panelH);
+        // compute rows for hit-testing
+        int rows = RowsPerPanel(panelY, panelH);
         int cellFull = cellSize + padding;
         if (localX >= 0 && localY >= 0)
         {
@@ -571,7 +584,7 @@ internal class SeeAllItemsOverlay
 
         // check clicks on items in grid
         // panelH supplied by GetPanelBounds
-        int rows = RowsPerPanel(panelH);
+            int rows = RowsPerPanel(panelY, panelH);
         int slotTop = panelY + 24;
         // compute dynamic columns matching RenderOverlay
         int columnsLocal = Math.Max(1, (panelW - 12 + padding) / (cellSize + padding));
