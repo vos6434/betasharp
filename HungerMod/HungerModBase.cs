@@ -51,6 +51,10 @@ public class HungerModBase : ModBase
     private static ItemRenderer? HudItemRenderer;
     private static FieldInfo? GuiIngameMcField;
     private static FieldInfo? ClientPlayerMcField;
+    // Cached reflection info for runtime GuiMods hook (performance)
+    private static FieldInfo? GuiModsOptionsField;
+    private static FieldInfo? GuiModsModListField;
+    private static FieldInfo? ModListSelectedIndexField;
     private static int ExtraHudBoxCount = DefaultExtraHudBoxCount;
     private static int ExtraHudBoxSize = DefaultExtraHudBoxSize;
 
@@ -229,6 +233,18 @@ public class HungerModBase : ModBase
                 if (guiModsRenderMethod != null)
                 {
                     _guiModsRenderHook = new Hook(guiModsRenderMethod, (Action<Action<GuiMods, int, int, float>, GuiMods, int, int, float>)GuiMods_Render);
+                    // Cache FieldInfo for GuiMods/_optionsButton and GuiMods/_modList (and ModList.SelectedIndex) once.
+                    try
+                    {
+                        GuiModsOptionsField = typeof(GuiMods).GetField("_optionsButton", BindingFlags.Instance | BindingFlags.NonPublic);
+                        GuiModsModListField = typeof(GuiMods).GetField("_modList", BindingFlags.Instance | BindingFlags.NonPublic);
+                        if (GuiModsModListField != null)
+                        {
+                            Type modListType = GuiModsModListField.FieldType;
+                            ModListSelectedIndexField = modListType.GetField("SelectedIndex", BindingFlags.Instance | BindingFlags.Public);
+                        }
+                    }
+                    catch { }
                 }
             }
             catch { }
@@ -975,20 +991,30 @@ public class HungerModBase : ModBase
     {
         try
         {
-            FieldInfo? optionsField = typeof(GuiMods).GetField("_optionsButton", BindingFlags.Instance | BindingFlags.NonPublic);
-            FieldInfo? modListField = typeof(GuiMods).GetField("_modList", BindingFlags.Instance | BindingFlags.NonPublic);
-            if (optionsField != null && modListField != null)
+            // Lazy-initialize cached FieldInfo if not already cached
+            if (GuiModsOptionsField == null || GuiModsModListField == null || ModListSelectedIndexField == null)
             {
-                GuiButton? optionsBtn = optionsField.GetValue(instance) as GuiButton;
-                object? modListObj = modListField.GetValue(instance);
-                int sel = -1;
-                if (modListObj != null)
+                try
                 {
-                    FieldInfo? selField = modListObj.GetType().GetField("SelectedIndex", BindingFlags.Instance | BindingFlags.Public);
-                    if (selField != null)
+                    GuiModsOptionsField ??= typeof(GuiMods).GetField("_optionsButton", BindingFlags.Instance | BindingFlags.NonPublic);
+                    GuiModsModListField ??= typeof(GuiMods).GetField("_modList", BindingFlags.Instance | BindingFlags.NonPublic);
+                    if (GuiModsModListField != null && ModListSelectedIndexField == null)
                     {
-                        sel = (int)(selField.GetValue(modListObj) ?? -1);
+                        Type modListType = GuiModsModListField.FieldType;
+                        ModListSelectedIndexField = modListType.GetField("SelectedIndex", BindingFlags.Instance | BindingFlags.Public);
                     }
+                }
+                catch { }
+            }
+
+            if (GuiModsOptionsField != null && GuiModsModListField != null)
+            {
+                GuiButton? optionsBtn = GuiModsOptionsField.GetValue(instance) as GuiButton;
+                object? modListObj = GuiModsModListField.GetValue(instance);
+                int sel = -1;
+                if (modListObj != null && ModListSelectedIndexField != null)
+                {
+                    sel = (int)(ModListSelectedIndexField.GetValue(modListObj) ?? -1);
                 }
 
                 if (optionsBtn != null)
@@ -1322,8 +1348,12 @@ public class HungerModBase : ModBase
     private readonly record struct FoodDefinition(int BonusHealth, float RegenPerSecond, int DurationSeconds);
     private class HungerModOptionsGui : GuiScreen
     {
-        private const int ButtonSave = 0;
-        private const int ButtonCancel = 1;
+        private const int BtnResetAll = 0;
+        private const int BtnDone = 1;
+        private const int BtnResetExtraCount = 10;
+        private const int BtnResetBoxSize = 11;
+        private const int BtnResetIconSize = 12;
+        private const int BtnResetBoxSpacing = 13;
 
         private readonly GuiScreen? _parentScreen;
         private GuiTextField? _txtExtraCount;
@@ -1331,6 +1361,8 @@ public class HungerModBase : ModBase
         private GuiTextField? _txtIconSize;
         private GuiTextField? _txtBoxSpacing;
         private string _screenTitle = "Hunger Mod Options";
+        private int _optionsStartY = 0;
+        private int _optionsSpacing = 30;
 
         public HungerModOptionsGui(GuiScreen? parent)
         {
@@ -1348,32 +1380,73 @@ public class HungerModBase : ModBase
         public override void InitGui()
         {
             Keyboard.enableRepeatEvents(true);
-
             int centerX = Width / 2;
             int centerY = Height / 4;
 
             _screenTitle = "Hunger Mod Options";
 
-            _txtExtraCount = new GuiTextField(this, FontRenderer, centerX - 100, centerY - 30, 200, 20, ExtraHudBoxCount.ToString()) { IsFocused = false };
-            _txtBoxSize = new GuiTextField(this, FontRenderer, centerX - 100, centerY, 200, 20, ExtraHudBoxSize.ToString());
-            _txtIconSize = new GuiTextField(this, FontRenderer, centerX - 100, centerY + 30, 200, 20, HudItemIconSize.ToString());
-            _txtBoxSpacing = new GuiTextField(this, FontRenderer, centerX - 100, centerY + 60, 200, 20, ExtraHudBoxSpacing.ToString());
+            // Layout parameters for two-column layout
+            int fieldHeight = 20;
+            int numFields = 4;
+            int desiredSpacing = _optionsSpacing;
+            int minTop = 40;
+            int bottomMargin = 80; // leave room for bottom buttons
+
+            // available space between margins
+            int availableBetween = Height - minTop - bottomMargin;
+            const int buttonsReserve = 64;
+            int maxSpacing = (availableBetween - buttonsReserve - numFields * fieldHeight) / Math.Max(1, numFields - 1);
+            if (maxSpacing < 0) maxSpacing = 2;
+            int spacing = Math.Min(desiredSpacing, maxSpacing);
+
+            int totalFieldsHeight = numFields * fieldHeight + (numFields - 1) * spacing;
+
+            int startY = centerY - totalFieldsHeight / 2;
+            int maxStartY = Height - bottomMargin - totalFieldsHeight;
+            if (maxStartY < minTop) startY = minTop; else startY = Math.Clamp(startY, minTop, maxStartY);
+
+            _optionsStartY = startY;
+            _optionsSpacing = spacing;
+
+            // Two-column positions
+            int labelX = 20;
+            int controlX = Width - 220; // controls column left
+            int fieldWidth = 120;
+            int resetWidth = 48;
+            int resetX = controlX + fieldWidth + 8;
+
+            // Create text fields at controls column
+            _txtExtraCount = new GuiTextField(this, FontRenderer, controlX, _optionsStartY, fieldWidth, fieldHeight, ExtraHudBoxCount.ToString()) { IsFocused = false };
+            _txtBoxSize = new GuiTextField(this, FontRenderer, controlX, _optionsStartY + (fieldHeight + spacing) * 1, fieldWidth, fieldHeight, ExtraHudBoxSize.ToString());
+            _txtIconSize = new GuiTextField(this, FontRenderer, controlX, _optionsStartY + (fieldHeight + spacing) * 2, fieldWidth, fieldHeight, HudItemIconSize.ToString());
+            _txtBoxSpacing = new GuiTextField(this, FontRenderer, controlX, _optionsStartY + (fieldHeight + spacing) * 3, fieldWidth, fieldHeight, ExtraHudBoxSpacing.ToString());
 
             _controlList.Clear();
-            _controlList.Add(new GuiButton(ButtonSave, centerX - 100, centerY + 100, "Save"));
-            _controlList.Add(new GuiButton(ButtonCancel, centerX - 100, centerY + 124, "Cancel"));
+            // Per-field reset buttons
+            _controlList.Add(new GuiButton(BtnResetExtraCount, resetX, _optionsStartY, resetWidth, fieldHeight, "Reset"));
+            _controlList.Add(new GuiButton(BtnResetBoxSize, resetX, _optionsStartY + (fieldHeight + spacing) * 1, resetWidth, fieldHeight, "Reset"));
+            _controlList.Add(new GuiButton(BtnResetIconSize, resetX, _optionsStartY + (fieldHeight + spacing) * 2, resetWidth, fieldHeight, "Reset"));
+            _controlList.Add(new GuiButton(BtnResetBoxSpacing, resetX, _optionsStartY + (fieldHeight + spacing) * 3, resetWidth, fieldHeight, "Reset"));
+
+            // Bottom actions: Reset All and Done
+            int btnW = 150;
+            _controlList.Add(new GuiButton(BtnResetAll, centerX - btnW - 6, _optionsStartY + totalFieldsHeight + 20, btnW, 20, "Reset All"));
+            _controlList.Add(new GuiButton(BtnDone, centerX + 6, _optionsStartY + totalFieldsHeight + 20, btnW, 20, "Done"));
         }
 
         protected override void ActionPerformed(GuiButton button)
         {
             if (!button.Enabled) return;
-
             switch (button.Id)
             {
-                case ButtonCancel:
-                    mc.displayGuiScreen(_parentScreen);
+                case BtnResetAll:
+                    // Reset all fields to defaults
+                    _txtExtraCount?.SetText(DefaultExtraHudBoxCount.ToString());
+                    _txtBoxSize?.SetText(DefaultExtraHudBoxSize.ToString());
+                    _txtIconSize?.SetText(DefaultHudItemIconSize.ToString());
+                    _txtBoxSpacing?.SetText(DefaultExtraHudBoxSpacing.ToString());
                     break;
-                case ButtonSave:
+                case BtnDone:
                     {
                         int extraCount = ExtraHudBoxCount;
                         int boxSize = ExtraHudBoxSize;
@@ -1412,6 +1485,18 @@ public class HungerModBase : ModBase
                         mc.displayGuiScreen(_parentScreen);
                         break;
                     }
+                case BtnResetExtraCount:
+                    _txtExtraCount?.SetText(DefaultExtraHudBoxCount.ToString());
+                    break;
+                case BtnResetBoxSize:
+                    _txtBoxSize?.SetText(DefaultExtraHudBoxSize.ToString());
+                    break;
+                case BtnResetIconSize:
+                    _txtIconSize?.SetText(DefaultHudItemIconSize.ToString());
+                    break;
+                case BtnResetBoxSpacing:
+                    _txtBoxSpacing?.SetText(DefaultExtraHudBoxSpacing.ToString());
+                    break;
             }
         }
 
@@ -1424,7 +1509,9 @@ public class HungerModBase : ModBase
 
             if (eventChar == 13)
             {
-                ActionPerformed(_controlList[0]);
+                // Trigger Done
+                GuiButton? done = _controlList.FirstOrDefault(b => b.Id == BtnDone);
+                if (done != null) ActionPerformed(done);
             }
         }
 
@@ -1443,12 +1530,20 @@ public class HungerModBase : ModBase
             DrawCenteredString(FontRenderer, _screenTitle, Width / 2, 20, 0xFFFFFF);
 
             int centerX = Width / 2;
-            int centerY = Height / 4;
+            int fieldHeight = 20;
+            int spacing = _optionsSpacing;
 
-            DrawString(FontRenderer, "Extra HUD Box Count:", centerX - 100, centerY - 40, 0xA0A0A0);
-            DrawString(FontRenderer, "Extra HUD Box Size:", centerX - 100, centerY - 10, 0xA0A0A0);
-            DrawString(FontRenderer, "HUD Item Icon Size:", centerX - 100, centerY + 20, 0xA0A0A0);
-            DrawString(FontRenderer, "Extra HUD Box Spacing:", centerX - 100, centerY + 50, 0xA0A0A0);
+            // Draw labels to the left of each field so they remain visible when
+            // vertical space is constrained. Compute left label X and draw each
+            // label vertically centered with its text box.
+            int labelX = centerX - 220;
+            int labelVOffset = (fieldHeight - 8) / 2; // rough vertical centering
+
+            int fieldY0 = _optionsStartY;
+            DrawString(FontRenderer, "Extra HUD Box Count:", labelX, fieldY0 + labelVOffset, 0xA0A0A0);
+            DrawString(FontRenderer, "Extra HUD Box Size:", labelX, fieldY0 + (fieldHeight + spacing) * 1 + labelVOffset, 0xA0A0A0);
+            DrawString(FontRenderer, "HUD Item Icon Size:", labelX, fieldY0 + (fieldHeight + spacing) * 2 + labelVOffset, 0xA0A0A0);
+            DrawString(FontRenderer, "Extra HUD Box Spacing:", labelX, fieldY0 + (fieldHeight + spacing) * 3 + labelVOffset, 0xA0A0A0);
 
             _txtExtraCount?.DrawTextBox();
             _txtBoxSize?.DrawTextBox();
