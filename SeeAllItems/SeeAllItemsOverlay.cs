@@ -30,7 +30,7 @@ internal class SeeAllItemsOverlay
     private GuiTextField? searchField;
     private int columns = 4;
     private int cellSize = 16;
-    private int padding = 6;
+    private int padding = 1;
     private int page = 0;
     // runtime-generated custom button texture id (if created)
     private int customButtonTextureId = -1;
@@ -139,8 +139,10 @@ internal class SeeAllItemsOverlay
         int btnH = 13; // increased by 1px
         DrawButton(parent, panelX + 6, navY, btnW, btnH, "Back", mouseX, mouseY);
         DrawButton(parent, panelX + panelW - 6 - btnW, navY, btnW, btnH, "Next", mouseX, mouseY);
-        // compute dynamic columns that fit inside the panel (leave 6px padding each side)
-        int columnsLocal = Math.Max(1, (panelW - 12 + padding) / (cellSize + padding));
+        // compute dynamic columns that fit inside the panel (reserve 1px left, 2px right inset)
+        int leftInset = 1;
+        int rightInset = 2;
+        int columnsLocal = Math.Max(1, (panelW - (leftInset + rightInset) + padding) / (cellSize + padding));
         int rows = RowsPerPanel(panelY, panelH);
         string pageText = $"{page + 1}/{Math.Max(1, (int)Math.Ceiling(filtered.Count / (double)(columnsLocal * rows)))}";
         int pageTextY = navY + (btnH - 8) / 2; // font height 8
@@ -154,7 +156,7 @@ internal class SeeAllItemsOverlay
 
         // center the grid horizontally inside the panel and leave a small top margin
         int contentWidth = columnsLocal * cellSize + (columnsLocal - 1) * padding;
-        int startX = panelX + Math.Max(6, panelW - 6 - contentWidth); // right-align grid inside panel with 6px right padding
+        int startX = panelX + leftInset; // left-align grid with leftInset
         int startY = slotTop + 6;
 
         // inner panel background to make alignment clear (semi-transparent so underlying background shows)
@@ -372,9 +374,11 @@ internal class SeeAllItemsOverlay
         int w = parent.Width;
         int slotTop = panelY + 24;
         // compute dynamic columns to match RenderOverlay
-        int columnsLocal = Math.Max(1, (panelW - 12 + padding) / (cellSize + padding));
+        int leftInset = 1;
+        int rightInset = 2;
+        int columnsLocal = Math.Max(1, (panelW - (leftInset + rightInset) + padding) / (cellSize + padding));
         int contentWidth = columnsLocal * cellSize + (columnsLocal - 1) * padding;
-        int startX = panelX + Math.Max(6, panelW - 6 - contentWidth); // right-align grid inside panel with 6px right padding
+        int startX = panelX + leftInset; // left-align grid with leftInset
         int startY = slotTop + 6;
         int localX = mouseX - startX;
         int localY = mouseY - startY;
@@ -589,12 +593,14 @@ internal class SeeAllItemsOverlay
         // check clicks on items in grid
         // panelH supplied by GetPanelBounds
             int rows = RowsPerPanel(panelY, panelH);
-        int slotTop = panelY + 24;
+        int slotTop = panelY + 1;
         // compute dynamic columns matching RenderOverlay
-        int columnsLocal = Math.Max(1, (panelW - 12 + padding) / (cellSize + padding));
+        int leftInset = 1;
+        int rightInset = 1;
+        int columnsLocal = Math.Max(1, (panelW - (leftInset + rightInset) + padding) / (cellSize + padding));
         int contentWidth2 = columnsLocal * cellSize + (columnsLocal - 1) * padding;
-        int startX2 = panelX + Math.Max(6, panelW - 6 - contentWidth2); // right-align grid inside panel with 6px right padding
-        int startY2 = slotTop + 6;
+        int startX2 = panelX + leftInset; // left-align grid with leftInset
+        int startY2 = slotTop + 1;
         int localX = x - startX2;
         int localY = y - startY2;
         int cellFull = cellSize + padding;
