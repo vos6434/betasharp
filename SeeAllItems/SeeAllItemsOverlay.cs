@@ -318,14 +318,19 @@ internal class SeeAllItemsOverlay
         if (hovered != null)
         {
             string itemName = ("" + TranslationStorage.Instance.TranslateNamedKey(hovered.getItemName())).Trim();
-                if (itemName.Length > 0)
-                {
-                    int tipX = mouseX + 12;
-                    int tipY = mouseY - 12;
-                    int textWidth = parent.FontRenderer.GetStringWidth(itemName);
-                    DrawGradientRect(tipX - 3, tipY - 3, tipX + textWidth + 3, tipY + 8 + 3, 0xC0000000, 0xC0000000);
-                    parent.FontRenderer.DrawStringWithShadow(itemName, tipX, tipY, 0xFFFFFFFF);
-                }
+            if (itemName.Length > 0)
+            {
+                int tipX = mouseX + 12;
+                int tipY = mouseY - 12;
+                int textWidth = parent.FontRenderer.GetStringWidth(itemName);
+                // draw tooltip background and text with depth testing disabled so tooltip always appears on top
+                try { GLManager.GL.Disable(GLEnum.DepthTest); } catch { }
+                try { GLManager.GL.DepthMask(false); } catch { }
+                DrawGradientRect(tipX - 3, tipY - 3, tipX + textWidth + 3, tipY + 8 + 3, 0xC0000000, 0xC0000000);
+                parent.FontRenderer.DrawStringWithShadow(itemName, tipX, tipY, 0xFFFFFFFF);
+                try { GLManager.GL.DepthMask(true); } catch { }
+                try { GLManager.GL.Enable(GLEnum.DepthTest); } catch { }
+            }
         }
     }
 
@@ -579,6 +584,7 @@ internal class SeeAllItemsOverlay
         GLManager.GL.Enable(GLEnum.Blend);
         GLManager.GL.Disable(GLEnum.AlphaTest);
         GLManager.GL.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
+
         GLManager.GL.ShadeModel(GLEnum.Smooth);
 
         Tessellator tess = Tessellator.instance;
@@ -597,8 +603,6 @@ internal class SeeAllItemsOverlay
         GLManager.GL.Disable(GLEnum.Blend);
         GLManager.GL.Enable(GLEnum.AlphaTest);
         GLManager.GL.Enable(GLEnum.Texture2D);
-        try { GLManager.GL.DepthMask(true); } catch { }
-        try { GLManager.GL.Enable(GLEnum.DepthTest); } catch { }
     }
 
     public bool HandleMouseClicked(GuiScreen parent, int x, int y, int button)
