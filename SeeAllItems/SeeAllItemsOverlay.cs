@@ -20,6 +20,9 @@ internal class SeeAllItemsOverlay
     private readonly List<ItemStack> allItems = new();
     private List<ItemStack> filtered = new();
 
+    // cached reflection info to read the private cursor counter from GuiTextField
+    private static System.Reflection.FieldInfo? guiTextFieldCursorCounter;
+
     private GuiTextField? searchField;
     private int columns = 4;
     private int cellSize = 20;
@@ -57,8 +60,8 @@ internal class SeeAllItemsOverlay
         int panelY = 0;
         int panelH = h;
 
-        // draw background panel
-        DrawPanelBackground(panelX, panelY, panelW, panelH);
+        // draw semi-transparent panel background (remove dirt texture)
+        DrawFilledRect(panelX, panelY, panelX + panelW, panelY + panelH, 0x40000000);
 
         // initialize search field to live inside the overlay panel (bottom inside panel)
         if (searchField == null || searchField.GetType() == null)
@@ -88,8 +91,13 @@ internal class SeeAllItemsOverlay
         int startX = panelX + Math.Max(6, (panelW - contentWidth) / 2);
         int startY = slotTop + 6;
 
-        // inner panel background to make alignment clear
-        DrawFilledRect(panelX + 2, slotTop - 2, panelX + panelW - 2, panelY + panelH - 6, 0xFF2A2A2A);
+        // inner panel background to make alignment clear (semi-transparent so underlying background shows)
+        DrawFilledRect(panelX + 2, slotTop - 2, panelX + panelW - 2, panelY + panelH - 6, 0x80000000);
+
+        // determine hovered stack (to draw highlight) using same hit-testing
+        var hoveredStackForHighlight = GetHoveredItem(parent, mouseX, mouseY, panelX, panelY, panelW, panelH);
+        int hoveredGlobalIndex = -1;
+        if (hoveredStackForHighlight != null) hoveredGlobalIndex = filtered.IndexOf(hoveredStackForHighlight);
 
         for (int r = 0; r < rows; r++)
         {
@@ -103,10 +111,33 @@ internal class SeeAllItemsOverlay
                 int py = startY + r * cellFull;
 
                 // draw cell background and border so alignment is visible
-                DrawFilledRect(px - 2, py - 2, px + cellSize + 2, py + cellSize + 2, 0xFF202020);
-                DrawFilledRect(px, py, px + cellSize, py + cellSize, 0xFF3A3A3A);
+                // cell border (semi-transparent)
+                DrawFilledRect(px - 2, py - 2, px + cellSize + 2, py + cellSize + 2, 0x60202020);
+                // cell background (more transparent)
+                DrawFilledRect(px, py, px + cellSize, py + cellSize, 0x503A3A3A);
+
+                // Ensure GL is in a known state before calling the shared item renderer
+                try
+                {
+                    GLManager.GL.Enable(GLEnum.Texture2D);
+                    GLManager.GL.Enable(GLEnum.Blend);
+                    GLManager.GL.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
+                    GLManager.GL.Color4(1.0f, 1.0f, 1.0f, 1.0f);
+                }
+                catch { }
 
                 itemRenderer.renderItemIntoGUI(mc.fontRenderer, mc.textureManager, stack, px, py);
+                try { itemRenderer.renderItemOverlayIntoGUI(mc.fontRenderer, mc.textureManager, stack, px, py); } catch { }
+
+                // draw hover outline if this is the hovered stack
+                if (globalIndex == hoveredGlobalIndex)
+                {
+                    // simple 1px white outline (drawn as thin filled rects)
+                    DrawFilledRect(px - 1, py - 1, px + cellSize + 1, py, 0x80FFFFFF);
+                    DrawFilledRect(px - 1, py + cellSize, px + cellSize + 1, py + cellSize + 1, 0x80FFFFFF);
+                    DrawFilledRect(px - 1, py, px, py + cellSize, 0x80FFFFFF);
+                    DrawFilledRect(px + cellSize, py, px + cellSize + 1, py + cellSize, 0x80FFFFFF);
+                }
             }
         }
 
@@ -130,8 +161,21 @@ internal class SeeAllItemsOverlay
             Console.WriteLine("SeeAllItemsOverlay: wheel read threw: " + ex);
         }
 
-        // draw search field
-        searchField.DrawTextBox();
+        // draw search field using the standard textbox renderer (keeps vanilla look)
+        if (searchField != null)
+        {
+            try { searchField.updateCursorCounter(); } catch { }
+            try
+            {
+                GLManager.GL.Enable(GLEnum.Texture2D);
+                GLManager.GL.Enable(GLEnum.Blend);
+                GLManager.GL.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
+                GLManager.GL.Color4(1.0f, 1.0f, 1.0f, 1.0f);
+            }
+            catch { }
+
+            try { searchField.DrawTextBox(); } catch (Exception ex) { Console.WriteLine("SeeAllItemsOverlay: DrawTextBox threw: " + ex); }
+        }
 
         // if tooltip
         var hovered = GetHoveredItem(parent, mouseX, mouseY, panelX, panelY, panelW, panelH);
@@ -192,11 +236,16 @@ internal class SeeAllItemsOverlay
         tess.addVertexWithUV(x + w, y, 0.0, w / 32.0, y / 32.0);
         tess.addVertexWithUV(x, y, 0.0, 0.0, y / 32.0);
         tess.draw();
+        // reset GL color/state so subsequent textured UI elements render normally
+        GLManager.GL.Color4(1.0f, 1.0f, 1.0f, 1.0f);
+        GLManager.GL.Enable(GLEnum.Texture2D);
+        GLManager.GL.Disable(GLEnum.Blend);
     }
 
     private void DrawButton(int x, int y, int w, int h, string text)
     {
-        DrawFilledRect(x, y, x + w, y + h, 0xFF202020);
+        // make nav buttons semi-transparent so panel shows through
+        DrawFilledRect(x, y, x + w, y + h, 0x80202020);
         Gui.DrawString(mc.fontRenderer, text, x + 4, y + 2, 0xFFFFFF);
     }
 
@@ -217,11 +266,13 @@ internal class SeeAllItemsOverlay
         tess.addVertex(x2, y1, 0.0D);
         tess.addVertex(x1, y1, 0.0D);
         tess.draw();
+        // restore color and texture state so subsequent textured UI draws are not tinted
+        GLManager.GL.Color4(1.0f, 1.0f, 1.0f, 1.0f);
         GLManager.GL.Enable(GLEnum.Texture2D);
         GLManager.GL.Disable(GLEnum.Blend);
     }
 
-    private void DrawGradientRect(int right, int bottom, int left, int top, uint topColor, uint bottomColor)
+    private void DrawGradientRect(int left, int top, int right, int bottom, uint topColor, uint bottomColor)
     {
         float a1 = (topColor >> 24 & 255) / 255.0F;
         float r1 = (topColor >> 16 & 255) / 255.0F;
@@ -250,6 +301,8 @@ internal class SeeAllItemsOverlay
         tess.draw();
 
         GLManager.GL.ShadeModel(GLEnum.Flat);
+        // ensure color is reset for textured draws afterwards
+        GLManager.GL.Color4(1.0f, 1.0f, 1.0f, 1.0f);
         GLManager.GL.Disable(GLEnum.Blend);
         GLManager.GL.Enable(GLEnum.AlphaTest);
         GLManager.GL.Enable(GLEnum.Texture2D);
@@ -284,9 +337,11 @@ internal class SeeAllItemsOverlay
         int panelH = h;
         int rows = RowsPerPanel(panelH);
         int slotTop = panelY + 24;
-        int startX = panelX + 6;
+        int contentWidth = columns * cellSize + (columns - 1) * padding;
+        int startX = panelX + Math.Max(6, (panelW - contentWidth) / 2);
+        int startY = slotTop + 6;
         int localX = x - startX;
-        int localY = y - slotTop;
+        int localY = y - startY;
         int cellFull = cellSize + padding;
         if (localX >= 0 && localY >= 0)
         {

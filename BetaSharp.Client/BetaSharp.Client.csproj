@@ -31,5 +31,17 @@
       <Error Condition="'$(MSBuildLastTaskResult)' != 'true'"
              Text="HungerMod build failed. Launch canceled. Check the build output for HungerMod errors." />
     </Target>
+
+        <Target Name="BuildSeeAllItemsForDebug"
+        AfterTargets="Build"
+        Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipSeeAllItemsPrebuild)' != 'true' and Exists('..\SeeAllItems\SeeAllItems.csproj')">
+      <Message Importance="high" Text="Rebuilding SeeAllItems before launch..." />
+      <MSBuild Projects="..\SeeAllItems\SeeAllItems.csproj"
+           Targets="Rebuild"
+           Properties="Configuration=$(Configuration);Platform=$(Platform);BuildProjectReferences=false;SkipSeeAllItemsPrebuild=true"
+           ContinueOnError="WarnAndContinue" />
+      <Error Condition="'$(MSBuildLastTaskResult)' != 'true'"
+         Text="SeeAllItems build failed. Launch canceled. Check the build output for SeeAllItems errors." />
+        </Target>
   
   </Project>
