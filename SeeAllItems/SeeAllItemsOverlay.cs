@@ -117,11 +117,8 @@ internal class SeeAllItemsOverlay
 
         // initialize search field if needed (creation moved to after panel dims)
 
-        // right panel dimensions (full height, flush to top/bottom)
-        int panelW = 140;
-        int panelX = w - panelW - 10;
-        int panelY = 0;
-        int panelH = h;
+        // right panel bounds — try to align vertically with the parent container (inventory) if available
+        GetPanelBounds(parent, out int panelX, out int panelY, out int panelW, out int panelH);
 
         // draw semi-transparent panel background (remove dirt texture)
         DrawFilledRect(panelX, panelY, panelX + panelW, panelY + panelH, 0x40000000);
@@ -170,7 +167,7 @@ internal class SeeAllItemsOverlay
         {
             for (int c = 0; c < columnsLocal; c++)
             {
-                int indexInPage = r * columns + c;
+                int indexInPage = r * columnsLocal + c;
                 int globalIndex = page * perPage + indexInPage;
                 if (globalIndex >= filtered.Count) break;
                 var stack = filtered[globalIndex];
@@ -215,7 +212,7 @@ internal class SeeAllItemsOverlay
             if (wheel != 0)
             {
                     int rowsLocal = RowsPerPanel(panelH);
-                    int perPageWheel = Math.Max(1, rowsLocal * columns);
+                    int perPageWheel = Math.Max(1, rowsLocal * columnsLocal);
                 int maxPages = Math.Max(1, (int)Math.Ceiling(filtered.Count / (double)perPage));
                 int old = page;
                 if (wheel > 0) page = Math.Max(0, page - 1);
@@ -301,6 +298,59 @@ internal class SeeAllItemsOverlay
         return Math.Max(1, (panelH - 32) / (cellSize + padding));
     }
 
+    private void GetPanelBounds(GuiScreen parent, out int panelX, out int panelY, out int panelW, out int panelH)
+    {
+        int w = parent.Width;
+        int h = parent.Height;
+        panelW = 140;
+        // prefer full window height for the overlay panel
+        panelY = 0;
+        panelH = h;
+        // default place at right edge
+        panelX = w - panelW - 10;
+        try
+        {
+            // attempt to read protected _xSize/_ySize from the parent (GuiContainer) via reflection
+            var t = parent.GetType();
+            System.Reflection.FieldInfo fx = null;
+            System.Reflection.FieldInfo fy = null;
+            var cur = t;
+            while (cur != null && (fx == null || fy == null))
+            {
+                if (fx == null) fx = cur.GetField("_xSize", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+                if (fy == null) fy = cur.GetField("_ySize", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+                cur = cur.BaseType;
+            }
+            if (fx != null && fy != null)
+            {
+                int xSizeVal = (int)fx.GetValue(parent)!;
+                int ySizeVal = (int)fy.GetValue(parent)!;
+                int guiLeft = (w - xSizeVal) / 2;
+                int guiRight = guiLeft + xSizeVal;
+                int margin = 6;
+                // Keep the panel anchored to the right edge. If that would make it touch the
+                // inventory, reduce the panel width so its left edge sits at least `margin`
+                // pixels to the right of the inventory right edge. Do not move the panel left.
+                int desiredW = panelW;
+                int maxAllowedW = w - guiRight - margin - 10; // solves: w - panelW -10 >= guiRight + margin
+                if (maxAllowedW < 0) maxAllowedW = 0;
+                if (maxAllowedW < desiredW)
+                {
+                    // shrink to avoid touching; allow very small widths if necessary
+                    panelW = Math.Max(20, maxAllowedW);
+                }
+                else
+                {
+                    panelW = desiredW;
+                }
+
+                panelX = w - panelW - 10;
+                // panel stays full height (panelY=0, panelH=h)
+            }
+        }
+        catch { }
+    }
+
     private ItemStack? GetHoveredItem(GuiScreen parent, int mouseX, int mouseY, int panelX, int panelY, int panelW, int panelH)
     {
         int w = parent.Width;
@@ -318,7 +368,7 @@ internal class SeeAllItemsOverlay
         {
             int col = localX / cellFull;
             int row = localY / cellFull;
-            if (col >= 0 && col < columns && row >= 0 && row < rows)
+            if (col >= 0 && col < columnsLocal && row >= 0 && row < rows)
             {
                 int perPage = Math.Max(1, rows * columnsLocal);
                 int indexInPage = row * columnsLocal + col;
@@ -504,7 +554,7 @@ internal class SeeAllItemsOverlay
         // check nav buttons
         int w = parent.Width;
         int h = parent.Height;
-        int panelW = 140; int panelX = w - panelW - 10; int panelY = 0;
+        GetPanelBounds(parent, out int panelX, out int panelY, out int panelW, out int panelH);
         int navY = panelY + 4; int btnW = 36;
         int btnH = 12;
         if (x >= panelX + 6 && x <= panelX + 6 + btnW && y >= navY && y <= navY + btnH)
@@ -520,7 +570,7 @@ internal class SeeAllItemsOverlay
         }
 
         // check clicks on items in grid
-        int panelH = h;
+        // panelH supplied by GetPanelBounds
         int rows = RowsPerPanel(panelH);
         int slotTop = panelY + 24;
         // compute dynamic columns matching RenderOverlay
@@ -572,10 +622,7 @@ internal class SeeAllItemsOverlay
     {
         int w = parent.Width;
         int h = parent.Height;
-        int panelW = 140;
-        int panelX = w - panelW - 10;
-        int panelY = 0;
-        int panelH = h;
+        GetPanelBounds(parent, out int panelX, out int panelY, out int panelW, out int panelH);
 
         // check search field focus as well
         if (searchField != null && searchField.IsFocused) return true;
