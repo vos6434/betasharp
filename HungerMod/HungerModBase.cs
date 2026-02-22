@@ -1468,13 +1468,18 @@ public class HungerModBase : ModBase
 
             _controlList.Clear();
             // Per-field reset buttons (align with slot rows)
-            // Slot draws rows at _top + 4; add the same offset so buttons align
-            // Slight upward nudge so button top matches textbox border visually
-            int resetBaseY = slotTop + 2;
-            _controlList.Add(new GuiButton(BtnResetExtraCount, resetX, resetBaseY, resetWidth, fieldHeight, "Reset"));
-            _controlList.Add(new GuiButton(BtnResetBoxSize, resetX, resetBaseY + (fieldHeight + spacing) * 1, resetWidth, fieldHeight, "Reset"));
-            _controlList.Add(new GuiButton(BtnResetIconSize, resetX, resetBaseY + (fieldHeight + spacing) * 2, resetWidth, fieldHeight, "Reset"));
-            _controlList.Add(new GuiButton(BtnResetBoxSpacing, resetX, resetBaseY + (fieldHeight + spacing) * 3, resetWidth, fieldHeight, "Reset"));
+            // Slot draws rows at _top + 4; use the same offset so buttons align with rows
+            // Use the slot row height (posZ) as the vertical increment so gaps match exactly
+            int resetBaseY = slotTop + 4;
+            // Compute exact slot row Y positions and align the reset buttons to the text box borders
+            int resetY0 = resetBaseY - 1; // textbox outer border is at y - 1
+            int resetY1 = resetBaseY + slotRowHeight * 1 - 1;
+            int resetY2 = resetBaseY + slotRowHeight * 2 - 1;
+            int resetY3 = resetBaseY + slotRowHeight * 3 - 1;
+            _controlList.Add(new GuiButton(BtnResetExtraCount, resetX, resetY0, resetWidth, fieldHeight, "Reset"));
+            _controlList.Add(new GuiButton(BtnResetBoxSize, resetX, resetY1, resetWidth, fieldHeight, "Reset"));
+            _controlList.Add(new GuiButton(BtnResetIconSize, resetX, resetY2, resetWidth, fieldHeight, "Reset"));
+            _controlList.Add(new GuiButton(BtnResetBoxSpacing, resetX, resetY3, resetWidth, fieldHeight, "Reset"));
 
             // Bottom actions: Reset All and Done
             int btnW = 150;
@@ -1587,6 +1592,40 @@ public class HungerModBase : ModBase
             _txtBoxSize?.DrawTextBox();
             _txtIconSize?.DrawTextBox();
             _txtBoxSpacing?.DrawTextBox();
+
+            // Snap per-field Reset buttons to the exact textbox positions (read via reflection)
+            try
+            {
+                FieldInfo? xField = typeof(GuiTextField).GetField("_xPos", BindingFlags.Instance | BindingFlags.NonPublic);
+                if (GuiTextFieldYField != null && xField != null)
+                {
+                    int controlX = Width - 220;
+                    int fieldWidth = 120;
+                    int btnOffset = 8; // pixels to the right of the textbox
+
+                    void SnapButton(int btnId, GuiTextField? txt)
+                    {
+                        if (txt == null) return;
+                        object? xv = xField.GetValue(txt);
+                        object? yv = GuiTextFieldYField.GetValue(txt);
+                        if (xv is int txtX && yv is int txtY)
+                        {
+                            GuiButton? btn = _controlList.FirstOrDefault(b => b.Id == btnId);
+                            if (btn != null)
+                            {
+                                btn.XPosition = controlX + fieldWidth + btnOffset; // align to right of textbox
+                                btn.YPosition = txtY - 1; // align top with textbox outer border
+                            }
+                        }
+                    }
+
+                    SnapButton(BtnResetExtraCount, _txtExtraCount);
+                    SnapButton(BtnResetBoxSize, _txtBoxSize);
+                    SnapButton(BtnResetIconSize, _txtIconSize);
+                    SnapButton(BtnResetBoxSpacing, _txtBoxSpacing);
+                }
+            }
+            catch { }
 
             base.Render(mouseX, mouseY, partialTicks);
         }
