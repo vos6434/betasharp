@@ -1360,6 +1360,8 @@ public class HungerModBase : ModBase
         private GuiTextField? _txtBoxSize;
         private GuiTextField? _txtIconSize;
         private GuiTextField? _txtBoxSpacing;
+            private GuiSlot? _generalSlot;
+            private static FieldInfo? GuiTextFieldYField;
         private string _screenTitle = "Hunger Mod Options";
         private int _optionsStartY = 0;
         private int _optionsSpacing = 30;
@@ -1415,11 +1417,35 @@ public class HungerModBase : ModBase
             int resetWidth = 48;
             int resetX = controlX + fieldWidth + 8;
 
-            // Create text fields at controls column
-            _txtExtraCount = new GuiTextField(this, FontRenderer, controlX, _optionsStartY, fieldWidth, fieldHeight, ExtraHudBoxCount.ToString()) { IsFocused = false };
-            _txtBoxSize = new GuiTextField(this, FontRenderer, controlX, _optionsStartY + (fieldHeight + spacing) * 1, fieldWidth, fieldHeight, ExtraHudBoxSize.ToString());
-            _txtIconSize = new GuiTextField(this, FontRenderer, controlX, _optionsStartY + (fieldHeight + spacing) * 2, fieldWidth, fieldHeight, HudItemIconSize.ToString());
-            _txtBoxSpacing = new GuiTextField(this, FontRenderer, controlX, _optionsStartY + (fieldHeight + spacing) * 3, fieldWidth, fieldHeight, ExtraHudBoxSpacing.ToString());
+            // Create text fields (Y will be updated by the GuiSlot during render)
+            _txtExtraCount = new GuiTextField(this, FontRenderer, controlX, 0, fieldWidth, fieldHeight, ExtraHudBoxCount.ToString()) { IsFocused = false };
+            _txtBoxSize = new GuiTextField(this, FontRenderer, controlX, 0, fieldWidth, fieldHeight, ExtraHudBoxSize.ToString());
+            _txtIconSize = new GuiTextField(this, FontRenderer, controlX, 0, fieldWidth, fieldHeight, HudItemIconSize.ToString());
+            _txtBoxSpacing = new GuiTextField(this, FontRenderer, controlX, 0, fieldWidth, fieldHeight, ExtraHudBoxSpacing.ToString());
+
+            // Cache private _yPos field on GuiTextField to move fields when the slot scrolls
+            GuiTextFieldYField ??= typeof(GuiTextField).GetField("_yPos", BindingFlags.Instance | BindingFlags.NonPublic);
+
+            // Create a GuiSlot to host the general option rows so we get native scrolling
+            int slotTop = _optionsStartY;
+            int slotBottom = _optionsStartY + totalFieldsHeight;
+            int slotRowHeight = fieldHeight + spacing;
+            _generalSlot = new GeneralOptionsSlot(Minecraft.INSTANCE, Width, Height, slotTop, slotBottom, slotRowHeight, this);
+
+            // Move the slot's scrollbar to the right of the reset buttons by tweaking the slot's internal width
+            try
+            {
+                FieldInfo? slotWidthField = typeof(GuiSlot).GetField("_width", BindingFlags.Instance | BindingFlags.NonPublic);
+                FieldInfo? slotRightField = typeof(GuiSlot).GetField("_right", BindingFlags.Instance | BindingFlags.NonPublic);
+                if (slotWidthField != null && slotRightField != null)
+                {
+                    int desiredScrollX = resetX + resetWidth + 8; // a few pixels right of reset buttons
+                    int newWidth = Math.Max(Width, 2 * (desiredScrollX - 124));
+                    slotWidthField.SetValue(_generalSlot, newWidth);
+                    slotRightField.SetValue(_generalSlot, newWidth);
+                }
+            }
+            catch { }
 
             _controlList.Clear();
             // Per-field reset buttons
@@ -1529,28 +1555,103 @@ public class HungerModBase : ModBase
             DrawDefaultBackground();
             DrawCenteredString(FontRenderer, _screenTitle, Width / 2, 20, 0xFFFFFF);
 
-            int centerX = Width / 2;
-            int fieldHeight = 20;
-            int spacing = _optionsSpacing;
+            // Render the general options inside the slot so native scrolling is used.
+            _generalSlot?.DrawScreen(mouseX, mouseY, partialTicks);
 
-            // Draw labels to the left of each field so they remain visible when
-            // vertical space is constrained. Compute left label X and draw each
-            // label vertically centered with its text box.
-            int labelX = centerX - 220;
-            int labelVOffset = (fieldHeight - 8) / 2; // rough vertical centering
-
-            int fieldY0 = _optionsStartY;
-            DrawString(FontRenderer, "Extra HUD Box Count:", labelX, fieldY0 + labelVOffset, 0xA0A0A0);
-            DrawString(FontRenderer, "Extra HUD Box Size:", labelX, fieldY0 + (fieldHeight + spacing) * 1 + labelVOffset, 0xA0A0A0);
-            DrawString(FontRenderer, "HUD Item Icon Size:", labelX, fieldY0 + (fieldHeight + spacing) * 2 + labelVOffset, 0xA0A0A0);
-            DrawString(FontRenderer, "Extra HUD Box Spacing:", labelX, fieldY0 + (fieldHeight + spacing) * 3 + labelVOffset, 0xA0A0A0);
-
+            // Draw text boxes after the slot has positioned them
             _txtExtraCount?.DrawTextBox();
             _txtBoxSize?.DrawTextBox();
             _txtIconSize?.DrawTextBox();
             _txtBoxSpacing?.DrawTextBox();
 
             base.Render(mouseX, mouseY, partialTicks);
+        }
+
+        private void RenderGeneralRow(int rowIndex, int x, int y)
+        {
+            int centerX = Width / 2;
+            int fieldHeight = 20;
+            int spacing = _optionsSpacing;
+
+            int labelX = centerX - 220;
+            int controlX = Width - 220;
+            int labelVOffset = (fieldHeight - 8) / 2;
+
+            string label = rowIndex switch
+            {
+                0 => "Extra HUD Box Count:",
+                1 => "Extra HUD Box Size:",
+                2 => "HUD Item Icon Size:",
+                3 => "Extra HUD Box Spacing:",
+                _ => ""
+            };
+
+            DrawString(FontRenderer, label, labelX, y + labelVOffset, 0xA0A0A0);
+
+            // Move the corresponding text field into place by updating its private _yPos
+            try
+            {
+                switch (rowIndex)
+                {
+                    case 0:
+                        GuiTextFieldYField?.SetValue(_txtExtraCount, y);
+                        break;
+                    case 1:
+                        GuiTextFieldYField?.SetValue(_txtBoxSize, y);
+                        break;
+                    case 2:
+                        GuiTextFieldYField?.SetValue(_txtIconSize, y);
+                        break;
+                    case 3:
+                        GuiTextFieldYField?.SetValue(_txtBoxSpacing, y);
+                        break;
+                }
+            }
+            catch { }
+        }
+
+        private void SetFieldFocused(int index)
+        {
+            _txtExtraCount?.SetFocused(false);
+            _txtBoxSize?.SetFocused(false);
+            _txtIconSize?.SetFocused(false);
+            _txtBoxSpacing?.SetFocused(false);
+
+            switch (index)
+            {
+                case 0: _txtExtraCount?.SetFocused(true); break;
+                case 1: _txtBoxSize?.SetFocused(true); break;
+                case 2: _txtIconSize?.SetFocused(true); break;
+                case 3: _txtBoxSpacing?.SetFocused(true); break;
+            }
+        }
+
+        private class GeneralOptionsSlot : GuiSlot
+        {
+            private readonly HungerModOptionsGui _parent;
+
+            public GeneralOptionsSlot(Minecraft mc, int width, int height, int top, int bottom, int posZ, HungerModOptionsGui parent)
+                : base(mc, width, height, top, bottom, posZ)
+            {
+                _parent = parent;
+                SetShowSelectionHighlight(false);
+            }
+
+            public override int GetSize() => 4;
+
+            protected override void ElementClicked(int index, bool doubleClick)
+            {
+                _parent.SetFieldFocused(index);
+            }
+
+            protected override bool isSelected(int slotIndex) => false;
+
+            protected override void DrawBackground() { }
+
+            protected override void DrawSlot(int index, int x, int y, int height, Tessellator tess)
+            {
+                _parent.RenderGeneralRow(index, x, y);
+            }
         }
 
         public override void SelectNextField()
