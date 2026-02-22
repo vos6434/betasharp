@@ -29,7 +29,7 @@ internal class SeeAllItemsOverlay
 
     private GuiTextField? searchField;
     private int columns = 4;
-    private int cellSize = 20;
+    private int cellSize = 16;
     private int padding = 6;
     private int page = 0;
     // runtime-generated custom button texture id (if created)
@@ -141,18 +141,20 @@ internal class SeeAllItemsOverlay
         int btnH = 13; // increased by 1px
         DrawButton(parent, panelX + 6, navY, btnW, btnH, "Back", mouseX, mouseY);
         DrawButton(parent, panelX + panelW - 6 - btnW, navY, btnW, btnH, "Next", mouseX, mouseY);
-        string pageText = $"{page + 1}/{Math.Max(1, (int)Math.Ceiling(filtered.Count / (double)(columns * RowsPerPanel(panelH))))}";        
+        // compute dynamic columns that fit inside the panel (leave 6px padding each side)
+        int columnsLocal = Math.Max(1, (panelW - 12 + padding) / (cellSize + padding));
+        string pageText = $"{page + 1}/{Math.Max(1, (int)Math.Ceiling(filtered.Count / (double)(columnsLocal * RowsPerPanel(panelH))))}";        
         int pageTextY = navY + (btnH - 8) / 2; // font height 8
         Gui.DrawCenteredString(parent.FontRenderer, pageText, panelX + panelW / 2, pageTextY, 0xFFFFFF);
 
         // draw items manually into the panel grid (avoid GuiSlot centering logic)
         int rows = RowsPerPanel(panelH);
         int slotTop = panelY + 24;
-        int perPage = Math.Max(1, rows * columns);
+        int perPage = Math.Max(1, rows * columnsLocal);
         int cellFull = cellSize + padding;
 
         // center the grid horizontally inside the panel and leave a small top margin
-        int contentWidth = columns * cellSize + (columns - 1) * padding;
+        int contentWidth = columnsLocal * cellSize + (columnsLocal - 1) * padding;
         int startX = panelX + Math.Max(6, (panelW - contentWidth) / 2);
         int startY = slotTop + 6;
 
@@ -166,7 +168,7 @@ internal class SeeAllItemsOverlay
 
         for (int r = 0; r < rows; r++)
         {
-            for (int c = 0; c < columns; c++)
+            for (int c = 0; c < columnsLocal; c++)
             {
                 int indexInPage = r * columns + c;
                 int globalIndex = page * perPage + indexInPage;
@@ -303,7 +305,9 @@ internal class SeeAllItemsOverlay
     {
         int w = parent.Width;
         int slotTop = panelY + 24;
-        int contentWidth = columns * cellSize + (columns - 1) * padding;
+        // compute dynamic columns to match RenderOverlay
+        int columnsLocal = Math.Max(1, (panelW - 12 + padding) / (cellSize + padding));
+        int contentWidth = columnsLocal * cellSize + (columnsLocal - 1) * padding;
         int startX = panelX + Math.Max(6, (panelW - contentWidth) / 2);
         int startY = slotTop + 6;
         int localX = mouseX - startX;
@@ -316,8 +320,8 @@ internal class SeeAllItemsOverlay
             int row = localY / cellFull;
             if (col >= 0 && col < columns && row >= 0 && row < rows)
             {
-                int perPage = Math.Max(1, rows * columns);
-                int indexInPage = row * columns + col;
+                int perPage = Math.Max(1, rows * columnsLocal);
+                int indexInPage = row * columnsLocal + col;
                 int globalIndex = page * perPage + indexInPage;
                 if (globalIndex >= 0 && globalIndex < filtered.Count) return filtered[globalIndex];
             }
@@ -519,20 +523,22 @@ internal class SeeAllItemsOverlay
         int panelH = h;
         int rows = RowsPerPanel(panelH);
         int slotTop = panelY + 24;
-        int contentWidth = columns * cellSize + (columns - 1) * padding;
-        int startX = panelX + Math.Max(6, (panelW - contentWidth) / 2);
-        int startY = slotTop + 6;
-        int localX = x - startX;
-        int localY = y - startY;
+        // compute dynamic columns matching RenderOverlay
+        int columnsLocal = Math.Max(1, (panelW - 12 + padding) / (cellSize + padding));
+        int contentWidth2 = columnsLocal * cellSize + (columnsLocal - 1) * padding;
+        int startX2 = panelX + Math.Max(6, (panelW - contentWidth2) / 2);
+        int startY2 = slotTop + 6;
+        int localX = x - startX2;
+        int localY = y - startY2;
         int cellFull = cellSize + padding;
         if (localX >= 0 && localY >= 0)
         {
             int col = localX / cellFull;
             int row = localY / cellFull;
-            if (col >= 0 && col < columns && row >= 0 && row < rows)
+            if (col >= 0 && col < columnsLocal && row >= 0 && row < rows)
             {
-                int perPage = Math.Max(1, rows * columns);
-                int indexInPage = row * columns + col;
+                int perPage = Math.Max(1, rows * columnsLocal);
+                int indexInPage = row * columnsLocal + col;
                 int globalIndex = page * perPage + indexInPage;
                 if (globalIndex >= 0 && globalIndex < filtered.Count)
                 {
