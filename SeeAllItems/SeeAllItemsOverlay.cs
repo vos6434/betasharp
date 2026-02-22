@@ -123,8 +123,8 @@ internal class SeeAllItemsOverlay
         // right panel bounds — try to align vertically with the parent container (inventory) if available
         GetPanelBounds(parent, out int panelX, out int panelY, out int panelW, out int panelH);
 
-        // draw semi-transparent panel background (remove dirt texture)
-        DrawFilledRect(panelX, panelY, panelX + panelW, panelY + panelH, 0x40000000);
+        // draw fully transparent panel background (visual only)
+        DrawFilledRect(panelX, panelY, panelX + panelW, panelY + panelH, 0x00000000);
 
         // consistent insets for GUI elements inside the panel (fields used)
 
@@ -179,7 +179,7 @@ internal class SeeAllItemsOverlay
         int contentHeight = rows * cellSize + Math.Max(0, (rows - 1) * padding);
         int innerBottom = startY + contentHeight; // stop immediately above the search field
         // use the shared insets so the inner background lines up with the grid and input
-        DrawFilledRect(panelX + leftInset, slotTop - 2, panelX + panelW - rightInset, Math.Min(innerBottom, panelY + panelH - 22), 0x80000000);
+        DrawFilledRect(panelX + leftInset, slotTop - 2, panelX + panelW - rightInset, Math.Min(innerBottom, panelY + panelH - 22), 0x00000000);
 
         // determine hovered stack (to draw highlight) using same hit-testing
         var hoveredStackForHighlight = GetHoveredItem(parent, mouseX, mouseY, panelX, panelY, panelW, panelH);
@@ -198,10 +198,9 @@ internal class SeeAllItemsOverlay
                 int py = startY + r * cellFull;
 
                 // draw cell background and border so alignment is visible
-                // cell border (semi-transparent)
-                DrawFilledRect(px - 2, py - 2, px + cellSize + 2, py + cellSize + 2, 0x60202020);
-                // cell background (more transparent)
-                DrawFilledRect(px, py, px + cellSize, py + cellSize, 0x503A3A3A);
+                // cell border/background set fully transparent (visual only)
+                DrawFilledRect(px - 2, py - 2, px + cellSize + 2, py + cellSize + 2, 0x00000000);
+                DrawFilledRect(px, py, px + cellSize, py + cellSize, 0x00000000);
 
                 // Ensure GL is in a known state before calling the shared item renderer
                 try
