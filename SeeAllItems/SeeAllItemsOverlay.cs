@@ -134,8 +134,6 @@ internal class SeeAllItemsOverlay
         int navY = panelY + 1;
         int btnW = 36;
         int btnH = 13; // increased by 1px
-        DrawButton(parent, panelX + 6, navY, btnW, btnH, "Back", mouseX, mouseY);
-        DrawButton(parent, panelX + panelW - 6 - btnW, navY, btnW, btnH, "Next", mouseX, mouseY);
         // compute dynamic columns that fit inside the panel (reserve left/right insets)
         int columnsLocal = Math.Max(1, (panelW - (leftInset + rightInset) + padding) / (cellSize + padding));
         int rows = RowsPerPanel(panelY, panelH);
@@ -164,6 +162,16 @@ internal class SeeAllItemsOverlay
         {
             searchField = new GuiTextField(parent, parent.FontRenderer, sfX, sfY, sfW, 20, "");
         }
+
+        // position nav buttons so they align with the grid edges
+        try
+        {
+            int backX = startX; // left edge touches left edge of grid
+            int nextX = startX + Math.Max(0, contentWidth - btnW); // right edge touches right edge of grid
+            DrawButton(parent, backX, navY, btnW, btnH, "Back", mouseX, mouseY);
+            DrawButton(parent, nextX, navY, btnW, btnH, "Next", mouseX, mouseY);
+        }
+        catch { }
 
         // inner panel background to make alignment clear (semi-transparent so underlying background shows)
         // limit the inner background to the area above the search field so the grid doesn't draw behind it
