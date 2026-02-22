@@ -49,12 +49,7 @@ internal class SeeAllItemsOverlay
         int w = parent.Width;
         int h = parent.Height;
 
-        // initialize search field if needed
-        if (searchField == null || searchField.GetType() == null)
-        {
-            int sfW = Math.Max(100, w - 40);
-            searchField = new GuiTextField(parent, parent.FontRenderer, 20, h - 26, sfW, 20, "");
-        }
+        // initialize search field if needed (creation moved to after panel dims)
 
         // right panel dimensions (full height, flush to top/bottom)
         int panelW = 140;
@@ -64,6 +59,15 @@ internal class SeeAllItemsOverlay
 
         // draw background panel
         DrawPanelBackground(panelX, panelY, panelW, panelH);
+
+        // initialize search field to live inside the overlay panel (bottom inside panel)
+        if (searchField == null || searchField.GetType() == null)
+        {
+            int sfW = Math.Max(100, panelW - 12);
+            int sfX = panelX + 6;
+            int sfY = panelY + panelH - 26;
+            searchField = new GuiTextField(parent, parent.FontRenderer, sfX, sfY, sfW, 20, "");
+        }
 
         // top nav
         int navY = panelY + 4;
