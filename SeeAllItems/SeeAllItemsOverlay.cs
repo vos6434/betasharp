@@ -154,7 +154,7 @@ internal class SeeAllItemsOverlay
 
         // center the grid horizontally inside the panel and leave a small top margin
         int contentWidth = columnsLocal * cellSize + (columnsLocal - 1) * padding;
-        int startX = panelX + 6;
+        int startX = panelX + Math.Max(6, panelW - 6 - contentWidth); // right-align grid inside panel with 6px right padding
         int startY = slotTop + 6;
 
         // inner panel background to make alignment clear (semi-transparent so underlying background shows)
@@ -374,7 +374,7 @@ internal class SeeAllItemsOverlay
         // compute dynamic columns to match RenderOverlay
         int columnsLocal = Math.Max(1, (panelW - 12 + padding) / (cellSize + padding));
         int contentWidth = columnsLocal * cellSize + (columnsLocal - 1) * padding;
-        int startX = panelX + 6;
+        int startX = panelX + Math.Max(6, panelW - 6 - contentWidth); // right-align grid inside panel with 6px right padding
         int startY = slotTop + 6;
         int localX = mouseX - startX;
         int localY = mouseY - startY;
@@ -593,7 +593,7 @@ internal class SeeAllItemsOverlay
         // compute dynamic columns matching RenderOverlay
         int columnsLocal = Math.Max(1, (panelW - 12 + padding) / (cellSize + padding));
         int contentWidth2 = columnsLocal * cellSize + (columnsLocal - 1) * padding;
-        int startX2 = panelX + 6;
+        int startX2 = panelX + Math.Max(6, panelW - 6 - contentWidth2); // right-align grid inside panel with 6px right padding
         int startY2 = slotTop + 6;
         int localX = x - startX2;
         int localY = y - startY2;
