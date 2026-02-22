@@ -161,20 +161,56 @@ internal class SeeAllItemsOverlay
             Console.WriteLine("SeeAllItemsOverlay: wheel read threw: " + ex);
         }
 
-        // draw search field using the standard textbox renderer (keeps vanilla look)
+        // draw search field using the game's GuiTextField implementation so it matches vanilla
         if (searchField != null)
         {
             try { searchField.updateCursorCounter(); } catch { }
+
+            int sfW = Math.Max(100, panelW - 12);
+            int sfX = panelX + 6;
+            int sfY = panelY + panelH - 26;
+            int sfH = 20;
+
+            // keep the GuiTextField's private position/size in sync with the overlay panel
             try
             {
+                var t = typeof(GuiTextField);
+                var fx = t.GetField("_xPos", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                var fy = t.GetField("_yPos", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                var fw = t.GetField("_width", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                var fh = t.GetField("_height", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                if (fx != null) fx.SetValue(searchField, sfX);
+                if (fy != null) fy.SetValue(searchField, sfY);
+                if (fw != null) fw.SetValue(searchField, sfW);
+                if (fh != null) fh.SetValue(searchField, sfH);
+            }
+            catch { }
+
+            try
+            {
+                // force a known GL state for GUI textured draws (vanilla GUI expectations)
+                GLManager.GL.Disable(GLEnum.Lighting);
+                GLManager.GL.Disable(GLEnum.DepthTest);
+                GLManager.GL.Disable(GLEnum.CullFace);
                 GLManager.GL.Enable(GLEnum.Texture2D);
                 GLManager.GL.Enable(GLEnum.Blend);
+                GLManager.GL.Enable(GLEnum.AlphaTest);
                 GLManager.GL.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
                 GLManager.GL.Color4(1.0f, 1.0f, 1.0f, 1.0f);
             }
             catch { }
 
             try { searchField.DrawTextBox(); } catch (Exception ex) { Console.WriteLine("SeeAllItemsOverlay: DrawTextBox threw: " + ex); }
+
+            try
+            {
+                // restore safe defaults used elsewhere in this overlay
+                GLManager.GL.Color4(1.0f, 1.0f, 1.0f, 1.0f);
+                GLManager.GL.Enable(GLEnum.Texture2D);
+                GLManager.GL.Disable(GLEnum.Blend);
+                GLManager.GL.Enable(GLEnum.AlphaTest);
+            }
+            catch { }
         }
 
         // if tooltip
