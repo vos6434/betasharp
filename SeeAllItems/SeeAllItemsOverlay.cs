@@ -32,7 +32,7 @@ internal class SeeAllItemsOverlay
     private int cellSize = 16;
     private int padding = 1;
     // shared insets used by layout and hit-testing
-    private int leftInset = 1;
+    private int leftInset = 2;
     private int rightInset = 2;
     private int page = 0;
     // runtime-generated custom button texture id (if created)
@@ -143,7 +143,8 @@ internal class SeeAllItemsOverlay
 
         // draw items manually into the panel grid (avoid GuiSlot centering logic)
         // rows already computed above
-        int slotTop = panelY + 24;
+        // grid vertical offset set to panelY+11 per request
+        int slotTop = panelY + 11;
         int perPage = Math.Max(1, rows * columnsLocal);
         int cellFull = cellSize + padding;
 
@@ -177,7 +178,8 @@ internal class SeeAllItemsOverlay
         // limit the inner background to the area above the search field so the grid doesn't draw behind it
         int contentHeight = rows * cellSize + Math.Max(0, (rows - 1) * padding);
         int innerBottom = startY + contentHeight; // stop immediately above the search field
-        DrawFilledRect(panelX + 2, slotTop - 2, panelX + panelW - 2, Math.Min(innerBottom, panelY + panelH - 22), 0x80000000);
+        // use the shared insets so the inner background lines up with the grid and input
+        DrawFilledRect(panelX + leftInset, slotTop - 2, panelX + panelW - rightInset, Math.Min(innerBottom, panelY + panelH - 22), 0x80000000);
 
         // determine hovered stack (to draw highlight) using same hit-testing
         var hoveredStackForHighlight = GetHoveredItem(parent, mouseX, mouseY, panelX, panelY, panelW, panelH);
@@ -316,7 +318,7 @@ internal class SeeAllItemsOverlay
     {
         // compute available vertical space between the top of the item area and the
         // top of the search field, then divide by cell height+padding.
-        int slotTop = panelY + 24;
+        int slotTop = panelY + 11;
         int startY = slotTop + 6;
         int searchTop = panelY + panelH - 27; // search field Y in RenderOverlay
         int avail = searchTop - startY;
@@ -384,7 +386,7 @@ internal class SeeAllItemsOverlay
     private ItemStack? GetHoveredItem(GuiScreen parent, int mouseX, int mouseY, int panelX, int panelY, int panelW, int panelH)
     {
         int w = parent.Width;
-        int slotTop = panelY + 24;
+        int slotTop = panelY + 11;
         // compute dynamic columns to match RenderOverlay
         int columnsLocal = Math.Max(1, (panelW - (leftInset + rightInset) + padding) / (cellSize + padding));
         int contentWidth = columnsLocal * cellSize + (columnsLocal - 1) * padding;
@@ -600,15 +602,14 @@ internal class SeeAllItemsOverlay
             return true;
         }
 
-        // check clicks on items in grid
-        // panelH supplied by GetPanelBounds
-            int rows = RowsPerPanel(panelY, panelH);
-        int slotTop = panelY + 1;
+        // check clicks on items in grid (panelH supplied by GetPanelBounds)
+        int rows = RowsPerPanel(panelY, panelH);
+        int slotTop = panelY + 11; // matches RenderOverlay slotTop so hit-testing aligns
         // compute dynamic columns matching RenderOverlay
         int columnsLocal = Math.Max(1, (panelW - (leftInset + rightInset) + padding) / (cellSize + padding));
         int contentWidth2 = columnsLocal * cellSize + (columnsLocal - 1) * padding;
         int startX2 = panelX + leftInset; // left-align grid with leftInset
-        int startY2 = slotTop + 1;
+        int startY2 = slotTop + 6;
         int localX = x - startX2;
         int localY = y - startY2;
         int cellFull = cellSize + padding;
