@@ -41,6 +41,9 @@ internal class SeeAllItemsOverlay
     private int customButtonTextureHeight = 0;
     private int customButtonTextureWidth = 0;
 
+    // Debug: temporarily disable all DrawFilledRect fills to test source of grey backgrounds
+    private bool disableFills = true;
+
     // Slot handles vertical rows; we'll draw multiple columns per row
     private ItemGridSlot? slot;
 
@@ -207,6 +210,7 @@ internal class SeeAllItemsOverlay
                 {
                     GLManager.GL.Enable(GLEnum.Texture2D);
                     GLManager.GL.Enable(GLEnum.Blend);
+                    GLManager.GL.Enable(GLEnum.AlphaTest);
                     GLManager.GL.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
                     GLManager.GL.Color4(1.0f, 1.0f, 1.0f, 1.0f);
                 }
@@ -518,9 +522,15 @@ internal class SeeAllItemsOverlay
 
     private void DrawFilledRect(int x1, int y1, int x2, int y2, uint color)
     {
+        if (disableFills) return; // debug: early-out to skip drawing UI filled quads
+
         Tessellator tess = Tessellator.instance;
         GLManager.GL.Enable(GLEnum.Blend);
         GLManager.GL.Disable(GLEnum.Texture2D);
+        // disable depth test and depth writes for transparent UI quads so they
+        // do not occlude subsequently-drawn item sprites
+        GLManager.GL.Disable(GLEnum.DepthTest);
+        try { GLManager.GL.DepthMask(false); } catch { }
         GLManager.GL.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
         float a = (color >> 24 & 255) / 255.0F;
         float r = (color >> 16 & 255) / 255.0F;
@@ -533,7 +543,9 @@ internal class SeeAllItemsOverlay
         tess.addVertex(x2, y1, 0.0D);
         tess.addVertex(x1, y1, 0.0D);
         tess.draw();
-        // restore color and texture state so subsequent textured UI draws are not tinted
+        // restore depth, color and texture state so subsequent textured UI draws are not tinted
+        try { GLManager.GL.DepthMask(true); } catch { }
+        GLManager.GL.Enable(GLEnum.DepthTest);
         GLManager.GL.Color4(1.0f, 1.0f, 1.0f, 1.0f);
         GLManager.GL.Enable(GLEnum.Texture2D);
         GLManager.GL.Disable(GLEnum.Blend);
@@ -553,26 +565,37 @@ internal class SeeAllItemsOverlay
 
         GLManager.GL.Disable(GLEnum.Texture2D);
         GLManager.GL.Enable(GLEnum.Blend);
+        // disable depth writes for gradient UI backgrounds
+        GLManager.GL.Disable(GLEnum.DepthTest);
+        try { GLManager.GL.DepthMask(false); } catch { }
         GLManager.GL.Disable(GLEnum.AlphaTest);
         GLManager.GL.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
         GLManager.GL.ShadeModel(GLEnum.Smooth);
 
         Tessellator tess = Tessellator.instance;
-        tess.startDrawingQuads();
-        tess.setColorRGBA_F(r1, g1, b1, a1);
-        tess.addVertex(left, bottom, 0.0D);
-        tess.addVertex(right, bottom, 0.0D);
-        tess.setColorRGBA_F(r2, g2, b2, a2);
-        tess.addVertex(right, top, 0.0D);
-        tess.addVertex(left, top, 0.0D);
-        tess.draw();
-
-        GLManager.GL.ShadeModel(GLEnum.Flat);
-        // ensure color is reset for textured draws afterwards
-        GLManager.GL.Color4(1.0f, 1.0f, 1.0f, 1.0f);
-        GLManager.GL.Disable(GLEnum.Blend);
-        GLManager.GL.Enable(GLEnum.AlphaTest);
-        GLManager.GL.Enable(GLEnum.Texture2D);
+        try
+        {
+            tess.startDrawingQuads();
+            tess.setColorRGBA_F(r1, g1, b1, a1);
+            tess.addVertex(left, bottom, 0.0D);
+            tess.addVertex(right, bottom, 0.0D);
+            tess.setColorRGBA_F(r2, g2, b2, a2);
+            tess.addVertex(right, top, 0.0D);
+            tess.addVertex(left, top, 0.0D);
+            tess.draw();
+        }
+        finally
+        {
+            // always restore depth writes and depth test even if tess.draw() throws
+            try { GLManager.GL.DepthMask(true); } catch { }
+            GLManager.GL.Enable(GLEnum.DepthTest);
+            GLManager.GL.ShadeModel(GLEnum.Flat);
+            // ensure color is reset for textured draws afterwards
+            GLManager.GL.Color4(1.0f, 1.0f, 1.0f, 1.0f);
+            GLManager.GL.Disable(GLEnum.Blend);
+            GLManager.GL.Enable(GLEnum.AlphaTest);
+            GLManager.GL.Enable(GLEnum.Texture2D);
+        }
     }
 
     public bool HandleMouseClicked(GuiScreen parent, int x, int y, int button)
@@ -740,6 +763,16 @@ internal class SeeAllItemsOverlay
                 var stack = parentOverlay.filtered[itIndex];
                 int px = startX + c * (cell + parentOverlay.padding);
                 int py = y + 2;
+                try
+                {
+                    GLManager.GL.Enable(GLEnum.Texture2D);
+                    GLManager.GL.Enable(GLEnum.Blend);
+                    GLManager.GL.Enable(GLEnum.AlphaTest);
+                    try { GLManager.GL.AlphaFunc(GLEnum.Greater, 0.00392f); } catch { }
+                    GLManager.GL.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
+                    GLManager.GL.Color4(1.0f, 1.0f, 1.0f, 1.0f);
+                }
+                catch { }
                 parentOverlay.itemRenderer.renderItemIntoGUI(parentOverlay.mc.fontRenderer, parentOverlay.mc.textureManager, stack, px, py);
             }
         }
