@@ -73,14 +73,38 @@ internal class SeeAllItemsOverlay
         string pageText = $"{page + 1}/{Math.Max(1, (int)Math.Ceiling(filtered.Count / (double)(columns * RowsPerPanel(panelH))))}";
         Gui.DrawString(parent.FontRenderer, pageText, panelX + panelW / 2 - parent.FontRenderer.GetStringWidth(pageText) / 2, navY + 2, 0xFFFFFF);
 
-        // ensure slot exists
+        // draw items manually into the panel grid (avoid GuiSlot centering logic)
         int rows = RowsPerPanel(panelH);
         int slotTop = panelY + 24;
-        int slotBottom = panelY + panelH - 10;
-        int rowHeight = cellSize + padding;
-        slot ??= new ItemGridSlot(mc, panelW, panelH, slotTop, slotBottom, rowHeight, this, columns);
+        int perPage = Math.Max(1, rows * columns);
+        int cellFull = cellSize + padding;
 
-        slot.DrawScreen(mouseX, mouseY, partialTicks);
+        // center the grid horizontally inside the panel and leave a small top margin
+        int contentWidth = columns * cellSize + (columns - 1) * padding;
+        int startX = panelX + Math.Max(6, (panelW - contentWidth) / 2);
+        int startY = slotTop + 6;
+
+        // inner panel background to make alignment clear
+        DrawFilledRect(panelX + 2, slotTop - 2, panelX + panelW - 2, panelY + panelH - 6, 0xFF2A2A2A);
+
+        for (int r = 0; r < rows; r++)
+        {
+            for (int c = 0; c < columns; c++)
+            {
+                int indexInPage = r * columns + c;
+                int globalIndex = page * perPage + indexInPage;
+                if (globalIndex >= filtered.Count) break;
+                var stack = filtered[globalIndex];
+                int px = startX + c * cellFull;
+                int py = startY + r * cellFull;
+
+                // draw cell background and border so alignment is visible
+                DrawFilledRect(px - 2, py - 2, px + cellSize + 2, py + cellSize + 2, 0xFF202020);
+                DrawFilledRect(px, py, px + cellSize, py + cellSize, 0xFF3A3A3A);
+
+                itemRenderer.renderItemIntoGUI(mc.fontRenderer, mc.textureManager, stack, px, py);
+            }
+        }
 
         // handle mouse wheel for page navigation
         try
@@ -88,8 +112,8 @@ internal class SeeAllItemsOverlay
             int wheel = Mouse.getEventDWheel();
             if (wheel != 0)
             {
-                int rowsLocal = RowsPerPanel(panelH);
-                int perPage = Math.Max(1, rowsLocal * columns);
+                    int rowsLocal = RowsPerPanel(panelH);
+                    int perPageWheel = Math.Max(1, rowsLocal * columns);
                 int maxPages = Math.Max(1, (int)Math.Ceiling(filtered.Count / (double)perPage));
                 int old = page;
                 if (wheel > 0) page = Math.Max(0, page - 1);
@@ -129,11 +153,12 @@ internal class SeeAllItemsOverlay
     private ItemStack? GetHoveredItem(GuiScreen parent, int mouseX, int mouseY, int panelX, int panelY, int panelW, int panelH)
     {
         int w = parent.Width;
-        int pw = panelW; // parameters provided
-        int startX = panelX + 6;
         int slotTop = panelY + 24;
+        int contentWidth = columns * cellSize + (columns - 1) * padding;
+        int startX = panelX + Math.Max(6, (panelW - contentWidth) / 2);
+        int startY = slotTop + 6;
         int localX = mouseX - startX;
-        int localY = mouseY - slotTop;
+        int localY = mouseY - startY;
         int rows = RowsPerPanel(panelH);
         int cellFull = cellSize + padding;
         if (localX >= 0 && localY >= 0)
