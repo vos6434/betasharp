@@ -185,6 +185,18 @@ internal class SeeAllItemsOverlay
 
         // determine hovered stack (to draw highlight) using same hit-testing
         var hoveredStackForHighlight = GetHoveredItem(parent, mouseX, mouseY, panelX, panelY, panelW, panelH);
+        // prepare GL state for item rendering to match how the game draws items in inventory
+        try
+        {
+            GLManager.GL.Enable(GLEnum.Texture2D);
+            GLManager.GL.Enable(GLEnum.RescaleNormal);
+            try { Lighting.turnOn(); } catch { }
+            try { GLManager.GL.Enable(GLEnum.DepthTest); } catch { }
+            try { GLManager.GL.Enable(GLEnum.CullFace); } catch { }
+            GLManager.GL.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
+            GLManager.GL.Color4(1.0f, 1.0f, 1.0f, 1.0f);
+        }
+        catch { }
         int hoveredGlobalIndex = -1;
         if (hoveredStackForHighlight != null) hoveredGlobalIndex = filtered.IndexOf(hoveredStackForHighlight);
 
@@ -295,6 +307,8 @@ internal class SeeAllItemsOverlay
                 GLManager.GL.Enable(GLEnum.Texture2D);
                 GLManager.GL.Disable(GLEnum.Blend);
                 GLManager.GL.Enable(GLEnum.AlphaTest);
+                    // re-enable lighting for subsequent item/gui draws (ensure inventory-style lighting)
+                    try { Lighting.turnOn(); } catch { }
             }
             catch { }
         }
@@ -521,6 +535,9 @@ internal class SeeAllItemsOverlay
     private void DrawFilledRect(int x1, int y1, int x2, int y2, uint color)
     {
         Tessellator tess = Tessellator.instance;
+        // draw UI quads without affecting depth buffer or depth test
+        try { GLManager.GL.Disable(GLEnum.DepthTest); } catch { }
+        try { GLManager.GL.DepthMask(false); } catch { }
         GLManager.GL.Enable(GLEnum.Blend);
         GLManager.GL.Disable(GLEnum.Texture2D);
         GLManager.GL.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
@@ -539,6 +556,8 @@ internal class SeeAllItemsOverlay
         GLManager.GL.Color4(1.0f, 1.0f, 1.0f, 1.0f);
         GLManager.GL.Enable(GLEnum.Texture2D);
         GLManager.GL.Disable(GLEnum.Blend);
+        try { GLManager.GL.DepthMask(true); } catch { }
+        try { GLManager.GL.Enable(GLEnum.DepthTest); } catch { }
     }
 
     private void DrawGradientRect(int left, int top, int right, int bottom, uint topColor, uint bottomColor)
@@ -553,6 +572,9 @@ internal class SeeAllItemsOverlay
         float g2 = (bottomColor >> 8 & 255) / 255.0F;
         float b2 = (bottomColor & 255) / 255.0F;
 
+        // draw gradient UI quads without affecting depth buffer
+        try { GLManager.GL.Disable(GLEnum.DepthTest); } catch { }
+        try { GLManager.GL.DepthMask(false); } catch { }
         GLManager.GL.Disable(GLEnum.Texture2D);
         GLManager.GL.Enable(GLEnum.Blend);
         GLManager.GL.Disable(GLEnum.AlphaTest);
@@ -575,6 +597,8 @@ internal class SeeAllItemsOverlay
         GLManager.GL.Disable(GLEnum.Blend);
         GLManager.GL.Enable(GLEnum.AlphaTest);
         GLManager.GL.Enable(GLEnum.Texture2D);
+        try { GLManager.GL.DepthMask(true); } catch { }
+        try { GLManager.GL.Enable(GLEnum.DepthTest); } catch { }
     }
 
     public bool HandleMouseClicked(GuiScreen parent, int x, int y, int button)
