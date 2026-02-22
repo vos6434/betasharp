@@ -128,15 +128,7 @@ internal class SeeAllItemsOverlay
 
         // consistent insets for GUI elements inside the panel (fields used)
 
-        // initialize search field to live inside the overlay panel (bottom inside panel)
-        // place the search field flush with the bottom of the panel (no gap)
-            if (searchField == null || searchField.GetType() == null)
-            {
-                int sfW = Math.Max(100, panelW - (leftInset + rightInset));
-                int sfX = panelX + leftInset;
-                int sfY = panelY + panelH - 22; // raise 1px so the bottom isn't cut off
-                searchField = new GuiTextField(parent, parent.FontRenderer, sfX, sfY, sfW, 20, "");
-            }
+        // we'll initialize the search field after we compute the grid size below
 
         // top nav (moved 1px down so it visually touches but doesn't sit flush over the border)
         int navY = panelY + 1;
@@ -157,10 +149,21 @@ internal class SeeAllItemsOverlay
         int perPage = Math.Max(1, rows * columnsLocal);
         int cellFull = cellSize + padding;
 
-        // center the grid horizontally inside the panel and leave a small top margin
+        // left-align the grid inside the panel and leave a small top margin
         int contentWidth = columnsLocal * cellSize + (columnsLocal - 1) * padding;
         int startX = panelX + leftInset; // left-align grid with leftInset
         int startY = slotTop + 6;
+
+        // initialize search field to live inside the overlay panel (bottom inside panel)
+        // size it to match the grid `contentWidth` and align to `startX` so the input
+        // visually lines up with the item columns.
+        int sfW = Math.Max(100, contentWidth);
+        int sfX = startX;
+        int sfY = panelY + panelH - 22; // raise 1px so the bottom isn't cut off
+        if (searchField == null)
+        {
+            searchField = new GuiTextField(parent, parent.FontRenderer, sfX, sfY, sfW, 20, "");
+        }
 
         // inner panel background to make alignment clear (semi-transparent so underlying background shows)
         // limit the inner background to the area above the search field so the grid doesn't draw behind it
@@ -240,9 +243,7 @@ internal class SeeAllItemsOverlay
         {
             try { searchField.updateCursorCounter(); } catch { }
 
-                int sfW = Math.Max(100, panelW - (leftInset + rightInset));
-                int sfX = panelX + leftInset;
-                int sfY = panelY + panelH - 22; // raise 1px to avoid cut-off
+                // keep the GuiTextField's size/position synced with the computed grid metrics
                 int sfH = 20;
 
             // keep the GuiTextField's private position/size in sync with the overlay panel
