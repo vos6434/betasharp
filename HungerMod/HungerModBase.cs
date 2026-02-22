@@ -1429,14 +1429,24 @@ public class HungerModBase : ModBase
             // Create a GuiSlot to host the general option rows so we get native scrolling
             // Add a small top padding so the first input has the same gap as the bottom
             int slotTop = _optionsStartY + 4;
-            // Add bottom padding so the last input doesn't touch the slot edge
-            int slotBottom = _optionsStartY + totalFieldsHeight + 20;
+            // Add bottom padding so the last input doesn't touch the slot edge.
+            // Make the scroll window taller by allowing the slot to extend closer to the bottom
+            // while keeping a safe margin for the action buttons.
+            int computedSlotBottom = _optionsStartY + totalFieldsHeight + 20;
             // Add an extra per-row gap so input boxes have visible separation
             int extraRowGap = 6;
             // Keep row height consistent with layout but include the extra per-row gap
             int slotRowHeight = fieldHeight + spacing + extraRowGap;
-            // Expand slotBottom to accommodate the additional gaps so the initial visible area is sized reasonably
-            slotBottom += extraRowGap * Math.Max(0, numFields - 1);
+            // Default expanded bottom including gaps
+            int expandedBottom = computedSlotBottom + extraRowGap * Math.Max(0, numFields - 1);
+            // Reserve space for bottom buttons and a small margin (64px)
+            int maxAllowedBottom = Height - 64;
+            // Force the slot to extend closer to the bottom of the screen so the visible
+            // scroll area is taller even when content is short. Keep a safe margin
+            // to avoid overlapping the bottom action buttons.
+            int slotBottom = maxAllowedBottom;
+            // Ensure slotBottom is always below slotTop by at least one row
+            if (slotBottom <= slotTop) slotBottom = slotTop + slotRowHeight;
             _generalSlot = new GeneralOptionsSlot(Minecraft.INSTANCE, Width, Height, slotTop, slotBottom, slotRowHeight, this);
 
             // Move the slot's scrollbar to the right of the reset buttons by tweaking the slot's internal width
