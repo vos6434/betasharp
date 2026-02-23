@@ -648,10 +648,19 @@ internal class SeeAllItemsOverlay
                 try { searchField.SetFocused(true); } catch { }
                 try { searchField.MouseClicked(x, y, button); } catch { }
             }
-            else if (searchField.IsFocused || IsMouseOver(parent, x, y))
+            else
             {
                 try { searchField.MouseClicked(x, y, button); } catch { }
             }
+
+            // Enable repeat events while the field is focused so holding backspace
+            // or other keys repeats as expected. Disable when focus is lost.
+            try
+            {
+                if (searchField.IsFocused) Keyboard.enableRepeatEvents(true);
+                else Keyboard.enableRepeatEvents(false);
+            }
+            catch { }
         }
 
         // check nav buttons

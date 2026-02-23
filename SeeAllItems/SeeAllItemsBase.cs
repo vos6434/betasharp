@@ -97,6 +97,11 @@ public class SeeAllItemsBase : ModBase
                         {
                             OverlayInstance ??= new SeeAllItemsOverlay();
                         }
+                        else
+                        {
+                            // overlay hidden -> ensure repeat events are off
+                            try { Keyboard.enableRepeatEvents(false); } catch { }
+                        }
                     }
                 }
                 _lastRDown = rDown;
