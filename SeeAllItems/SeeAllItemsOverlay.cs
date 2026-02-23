@@ -41,6 +41,11 @@ internal class SeeAllItemsOverlay
     private int customButtonTextureHeight = 0;
     private int customButtonTextureWidth = 0;
 
+    // runtime-tracked search field rectangle so clicks can reliably focus it
+    private int searchX = 0;
+    private int searchY = 0;
+    private int searchW = 0;
+    private int searchH = 0;
     // note: UI filled-rects are used only for hover outlines and button fallback
 
     // Slot handles vertical rows; we'll draw multiple columns per row
@@ -161,9 +166,18 @@ internal class SeeAllItemsOverlay
         int sfW = Math.Max(100, contentWidth);
         int sfX = startX;
         int sfY = panelY + panelH - 22; // raise 1px so the bottom isn't cut off
+        int sfH = 20;
+
+        // store computed search rect for reliable click/focus handling
+        searchX = sfX;
+        searchY = sfY;
+        searchW = sfW;
+        searchH = sfH;
+
         if (searchField == null)
         {
-            searchField = new GuiTextField(parent, parent.FontRenderer, sfX, sfY, sfW, 20, "");
+            searchField = new GuiTextField(parent, parent.FontRenderer, sfX, sfY, sfW, sfH, "");
+            try { searchField.SetFocused(true); } catch { }
         }
 
         // position nav buttons so they align with the grid edges
@@ -267,7 +281,6 @@ internal class SeeAllItemsOverlay
             try { searchField.updateCursorCounter(); } catch { }
 
                 // keep the GuiTextField's size/position synced with the computed grid metrics
-                int sfH = 20;
 
             // keep the GuiTextField's private position/size in sync with the overlay panel
             try
@@ -625,9 +638,21 @@ internal class SeeAllItemsOverlay
     public bool HandleMouseClicked(GuiScreen parent, int x, int y, int button)
     {
         // only forward to search field if click is over the overlay area or the field is already focused
-        if (searchField != null && (searchField.IsFocused || IsMouseOver(parent, x, y)))
+        if (searchField != null)
         {
-            searchField.MouseClicked(x, y, button);
+            // If the click landed inside the computed search box rect, ensure the
+            // field becomes focused and forward the click. This is more reliable
+            // than depending on internal readonly fields being mutable via
+            // reflection.
+            if (x >= searchX && x < searchX + searchW && y >= searchY && y < searchY + searchH)
+            {
+                try { searchField.SetFocused(true); } catch { }
+                try { searchField.MouseClicked(x, y, button); } catch { }
+            }
+            else if (searchField.IsFocused || IsMouseOver(parent, x, y))
+            {
+                try { searchField.MouseClicked(x, y, button); } catch { }
+            }
         }
 
         // check nav buttons
@@ -711,6 +736,16 @@ internal class SeeAllItemsOverlay
     public bool IsTyping()
     {
         return searchField != null && searchField.IsFocused;
+    }
+
+    // Public helper to focus the search field from external callers (e.g. when
+    // the overlay is opened) so typing begins immediately.
+    public void FocusSearch()
+    {
+        if (searchField != null)
+        {
+            try { searchField.SetFocused(true); } catch { }
+        }
     }
 
     public bool HandleKeyTyped(GuiScreen parent, char eventChar, int eventKey)

@@ -96,6 +96,7 @@ public class SeeAllItemsBase : ModBase
                         if (OverlayVisible)
                         {
                             OverlayInstance ??= new SeeAllItemsOverlay();
+                            try { OverlayInstance.FocusSearch(); } catch { }
                         }
                     }
                 }
@@ -153,6 +154,22 @@ public class SeeAllItemsBase : ModBase
                 char c = Keyboard.getEventCharacter();
                 int key = Keyboard.getEventKey();
                 Console.WriteLine($"SeeAllItems.HandleKeyboardInput: eventChar={c} eventKey={key}");
+                // Forward raw keyboard events to the overlay so it can receive focus
+                // and text input even if the parent screen consumes KeyTyped.
+                if (OverlayVisible && OverlayInstance != null)
+                {
+                    try
+                    {
+                        if (OverlayInstance.HandleKeyTyped(screen, c, key))
+                        {
+                            return; // handled by overlay
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine("SeeAllItems: HandleKeyboardInput -> HandleKeyTyped threw: " + ex);
+                    }
+                }
                 // NOTE: toggling moved to render-edge detector to ensure single, reliable toggle across screens.
                 // We intentionally do not toggle here to avoid duplicate toggles.
             }
