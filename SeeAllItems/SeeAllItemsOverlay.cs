@@ -751,6 +751,18 @@ internal class SeeAllItemsOverlay
     {
         if (searchField != null && searchField.IsFocused)
         {
+            // Pressing ESC should unfocus the field (vanilla behavior)
+            try
+            {
+                if (eventKey == Keyboard.KEY_ESCAPE)
+                {
+                    try { searchField.SetFocused(false); } catch { }
+                    try { Keyboard.enableRepeatEvents(false); } catch { }
+                    return true;
+                }
+            }
+            catch { }
+
             searchField.textboxKeyTyped(eventChar, eventKey);
             // update filter
             ApplyFilter(searchField.GetText());
