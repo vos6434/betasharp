@@ -177,7 +177,6 @@ internal class SeeAllItemsOverlay
         if (searchField == null)
         {
             searchField = new GuiTextField(parent, parent.FontRenderer, sfX, sfY, sfW, sfH, "");
-            try { searchField.SetFocused(true); } catch { }
         }
 
         // position nav buttons so they align with the grid edges
@@ -738,15 +737,6 @@ internal class SeeAllItemsOverlay
         return searchField != null && searchField.IsFocused;
     }
 
-    // Public helper to focus the search field from external callers (e.g. when
-    // the overlay is opened) so typing begins immediately.
-    public void FocusSearch()
-    {
-        if (searchField != null)
-        {
-            try { searchField.SetFocused(true); } catch { }
-        }
-    }
 
     public bool HandleKeyTyped(GuiScreen parent, char eventChar, int eventKey)
     {

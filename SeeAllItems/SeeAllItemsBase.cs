@@ -96,7 +96,6 @@ public class SeeAllItemsBase : ModBase
                         if (OverlayVisible)
                         {
                             OverlayInstance ??= new SeeAllItemsOverlay();
-                            try { OverlayInstance.FocusSearch(); } catch { }
                         }
                     }
                 }
