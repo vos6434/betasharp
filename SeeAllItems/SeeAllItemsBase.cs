@@ -16,7 +16,7 @@ public class SeeAllItemsBase : ModBase
         private Hook? _guiScreenHandleMouseHook;
 
     private static SeeAllItemsOverlay? OverlayInstance;
-    private static bool OverlayVisible = false;
+    private static bool OverlayVisible = true; // enabled by default
     private static bool _lastRDown = false;
 
     public override string Name => "See All Items";
@@ -121,6 +121,10 @@ public class SeeAllItemsBase : ModBase
 
         if (!OverlayVisible) return;
 
+        // Only render the overlay when the active screen is a container (inventory)
+        // This prevents the overlay from appearing in chat, main menu, pause menu, etc.
+        if (!(screen is BetaSharp.Client.Guis.GuiContainer)) return;
+
         OverlayInstance ??= new SeeAllItemsOverlay();
         try
         {
@@ -161,14 +165,14 @@ public class SeeAllItemsBase : ModBase
         // Each call corresponds to a keyboard event (caller loops Keyboard.next()). Read the event and toggle if 'R' pressed.
         try
         {
-            if (Keyboard.getEventKeyState())
+                if (Keyboard.getEventKeyState())
             {
                 char c = Keyboard.getEventCharacter();
                 int key = Keyboard.getEventKey();
                 Console.WriteLine($"SeeAllItems.HandleKeyboardInput: eventChar={c} eventKey={key}");
                 // Forward raw keyboard events to the overlay so it can receive focus
                 // and text input even if the parent screen consumes KeyTyped.
-                if (OverlayVisible && OverlayInstance != null)
+                    if (OverlayVisible && OverlayInstance != null && screen is BetaSharp.Client.Guis.GuiContainer)
                 {
                     try
                     {
@@ -231,7 +235,7 @@ public class SeeAllItemsBase : ModBase
     private static void GuiScreen_KeyTyped(Action<GuiScreen, char, int> orig, GuiScreen screen, char eventChar, int eventKey)
     {
         // Do not toggle here; render-time edge detection handles toggling to avoid duplicate events.
-        if (OverlayVisible && OverlayInstance != null && OverlayInstance.HandleKeyTyped(screen, eventChar, eventKey))
+        if (OverlayVisible && OverlayInstance != null && screen is BetaSharp.Client.Guis.GuiContainer && OverlayInstance.HandleKeyTyped(screen, eventChar, eventKey))
         {
             return; // handled by overlay
         }

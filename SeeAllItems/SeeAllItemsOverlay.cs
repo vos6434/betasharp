@@ -38,6 +38,8 @@ internal class SeeAllItemsOverlay
     // optional scroll behavior controls
     private bool invertScroll = true;
     private float scrollAcceleration = 1.0f; // multiplier applied to wheel notches
+    // tooltip option: show item/block id next to the name
+    private bool showIds = true;
     // runtime-generated custom button texture id (if created)
     private int customButtonTextureId = -1;
     // height of the loaded custom button texture (used to select v offsets)
@@ -317,6 +319,17 @@ internal class SeeAllItemsOverlay
             string itemName = ("" + TranslationStorage.Instance.TranslateNamedKey(hovered.getItemName())).Trim();
             if (itemName.Length > 0)
             {
+                if (showIds)
+                {
+                    try
+                    {
+                        int dmg = hovered.getDamage();
+                        string idStr = hovered.itemId.ToString();
+                        if (dmg != 0) idStr += ":" + dmg;
+                        itemName = itemName + " [" + idStr + "]";
+                    }
+                    catch { }
+                }
                 int screenW = parent.Width;
                 int screenH = parent.Height;
                 int textWidth = parent.FontRenderer.GetStringWidth(itemName);
@@ -808,6 +821,18 @@ internal class SeeAllItemsOverlay
             searchField?.SetFocused(true);
             return true;
         }
+
+        // toggle showing IDs with 'I' key when not typing
+        try
+        {
+            if (eventKey == Keyboard.KEY_I)
+            {
+                showIds = !showIds;
+                Console.WriteLine($"SeeAllItemsOverlay: showIds -> {showIds}");
+                return true;
+            }
+        }
+        catch { }
 
         return false;
     }
