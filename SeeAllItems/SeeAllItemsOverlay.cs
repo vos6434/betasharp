@@ -718,9 +718,7 @@ internal class SeeAllItemsOverlay
     // Returns true when the overlay consumed the scroll event.
     public bool HandleMouseScrolled(GuiScreen parent, int mouseX, int mouseY, int scrolled)
     {
-        // don't scroll while typing in the search field
-        if (IsTyping())
-            return false;
+        // allow scrolling even while the search field is focused
 
         // only handle wheel when mouse is over the overlay panel
         if (!IsMouseOver(parent, mouseX, mouseY))
@@ -764,7 +762,14 @@ internal class SeeAllItemsOverlay
         GetPanelBounds(parent, out int panelX, out int panelY, out int panelW, out int panelH);
 
         // check search field focus as well
-        if (searchField != null && searchField.IsFocused) return true;
+        // If the search field is focused, only treat the mouse as "over" the overlay
+        // when the cursor is actually inside the search field rect. This prevents
+        // the overlay from receiving scroll events when the field is focused but
+        // the user is pointing at other UI (e.g., the player's inventory).
+        if (searchField != null && searchField.IsFocused)
+        {
+            if (x >= searchX && x < searchX + searchW && y >= searchY && y < searchY + searchH) return true;
+        }
 
         return x >= panelX && x <= panelX + panelW && y >= panelY && y <= panelY + panelH;
     }
