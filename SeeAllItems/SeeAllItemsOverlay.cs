@@ -40,6 +40,8 @@ internal class SeeAllItemsOverlay
     private float scrollAcceleration = 1.0f; // multiplier applied to wheel notches
     // tooltip option: show item/block id next to the name
     private bool showIds = true;
+    // hide "hidden" subtypes when false
+    private bool showHiddenItems = false;
     // runtime-generated custom button texture id (if created)
     private int customButtonTextureId = -1;
     // height of the loaded custom button texture (used to select v offsets)
@@ -71,14 +73,72 @@ internal class SeeAllItemsOverlay
                 {
                     try
                     {
-                        allItems.Add(new ItemStack(i, 1, meta));
+                        // When hiding hidden items, always include the base variant (meta 0)
+                        // but still validate it reports a name/id below.
+                        if (!showHiddenItems)
+                        {
+                            if (meta == 0)
+                            {
+                                var baseStack = new ItemStack(i, 1, 0);
+                                try
+                                {
+                                    if (baseStack == null || baseStack.itemId <= 0) continue;
+                                    string dispBase = TranslationStorage.Instance.TranslateNamedKey(baseStack.getItemName() ?? "");
+                                    if (string.IsNullOrWhiteSpace(dispBase)) continue;
+                                }
+                                catch { continue; }
+                                allItems.Add(baseStack);
+                                continue;
+                            }
+
+                            // itemId rules (only include listed allowed metas when hiding)
+                            if (i == 17 && !(meta == 1 || meta == 2)) continue; // id 17
+                            if (i == 6 && !(meta == 1 || meta == 2)) continue;  // id 6
+                            if (i == 18 && meta != 1) continue;                  // id 18
+                            if (i == 44 && !(meta == 1 || meta == 2 || meta == 3)) continue; // id 44
+                            if (i == 7 && meta != 0) continue;                   // coal (id 7)
+                        }
+
+                        // create temp stack and validate it reports a display name and a numeric id
+                        var tempStack = new ItemStack(i, 1, meta);
+                        if (!showHiddenItems)
+                        {
+                            try
+                            {
+                                if (tempStack == null || tempStack.itemId <= 0) continue;
+                                string disp = TranslationStorage.Instance.TranslateNamedKey(tempStack.getItemName() ?? "");
+                                if (string.IsNullOrWhiteSpace(disp)) continue;
+                            }
+                            catch { continue; }
+                        }
+
+                        // when showHiddenItems==true, we include even unnamed/unreported stacks
+                        allItems.Add(tempStack);
                     }
                     catch { }
                 }
             }
             else
             {
-                allItems.Add(new ItemStack(i, 1));
+                try
+                {
+                    var single = new ItemStack(i, 1);
+                    if (!showHiddenItems)
+                    {
+                        if (single != null && single.itemId > 0)
+                        {
+                            string disp = TranslationStorage.Instance.TranslateNamedKey(single.getItemName() ?? "");
+                            if (!string.IsNullOrWhiteSpace(disp))
+                                allItems.Add(single);
+                        }
+                    }
+                    else
+                    {
+                        // include even if name/id not reported
+                        allItems.Add(single);
+                    }
+                }
+                catch { }
             }
         }
 
@@ -845,6 +905,15 @@ internal class SeeAllItemsOverlay
             {
                 showIds = !showIds;
                 Console.WriteLine($"SeeAllItemsOverlay: showIds -> {showIds}");
+                return true;
+            }
+            // toggle showing hidden items with 'H' key
+            if (eventKey == Keyboard.KEY_H)
+            {
+                showHiddenItems = !showHiddenItems;
+                Console.WriteLine($"SeeAllItemsOverlay: showHiddenItems -> {showHiddenItems}");
+                // rebuild filter/source to apply immediately
+                ApplyFilter(searchField?.GetText() ?? "");
                 return true;
             }
         }
