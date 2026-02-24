@@ -1,73 +1,64 @@
 using System.Reflection;
 using BetaSharp.Client.Input;
 using BetaSharp.Client.Guis;
-using BetaSharp.Modding;
 using MonoMod.RuntimeDetour;
 
 namespace SeeAllItems;
 
-[ModSide(Side.Client)]
-public class SeeAllItemsBase : ModBase
+// Client-side helper (no longer a ModBase) — initialized by SeeAllItemsMod
+public class SeeAllItemsClient
 {
     private Hook? _guiScreenRenderHook;
     private Hook? _guiScreenMouseHook;
     private Hook? _guiScreenKeyHook;
-        private Hook? _guiScreenHandleKeyboardHook;
-        private Hook? _guiScreenHandleMouseHook;
+    private Hook? _guiScreenHandleKeyboardHook;
+    private Hook? _guiScreenHandleMouseHook;
 
     private static SeeAllItemsOverlay? OverlayInstance;
     private static bool OverlayVisible = true; // enabled by default
     private static bool _lastRDown = false;
 
-    public override string Name => "See All Items";
-    public override string Description => "A small mod that shows an item browser overlay.";
-    public override string Author => "autogen";
-    public override bool HasOptionsMenu => false;
-
-    public override void Initialize(Side side)
+    public void InitializeClient()
     {
-        Console.WriteLine("SeeAllItems: initialized");
+        Console.WriteLine("SeeAllItems (client): initialized");
 
-        if (side == Side.Client || side == Side.Both)
+        var renderMethod = typeof(GuiScreen).GetMethod("Render", BindingFlags.Instance | BindingFlags.Public);
+        if (renderMethod != null)
         {
-            var renderMethod = typeof(GuiScreen).GetMethod("Render", BindingFlags.Instance | BindingFlags.Public);
-            if (renderMethod != null)
-            {
-                _guiScreenRenderHook = new Hook(renderMethod, (Action<Action<GuiScreen, int, int, float>, GuiScreen, int, int, float>)GuiScreen_Render);
-            }
+            _guiScreenRenderHook = new Hook(renderMethod, (Action<Action<GuiScreen, int, int, float>, GuiScreen, int, int, float>)GuiScreen_Render);
+        }
 
-            var mouseMethod = typeof(GuiScreen).GetMethod("MouseClicked", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-            if (mouseMethod != null)
-            {
-                _guiScreenMouseHook = new Hook(mouseMethod, (Action<Action<GuiScreen, int, int, int>, GuiScreen, int, int, int>)GuiScreen_MouseClicked);
-            }
+        var mouseMethod = typeof(GuiScreen).GetMethod("MouseClicked", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        if (mouseMethod != null)
+        {
+            _guiScreenMouseHook = new Hook(mouseMethod, (Action<Action<GuiScreen, int, int, int>, GuiScreen, int, int, int>)GuiScreen_MouseClicked);
+        }
 
-            var keyMethod = typeof(GuiScreen).GetMethod("KeyTyped", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-            if (keyMethod != null)
-            {
-                _guiScreenKeyHook = new Hook(keyMethod, (Action<Action<GuiScreen, char, int>, GuiScreen, char, int>)GuiScreen_KeyTyped);
-            }
+        var keyMethod = typeof(GuiScreen).GetMethod("KeyTyped", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        if (keyMethod != null)
+        {
+            _guiScreenKeyHook = new Hook(keyMethod, (Action<Action<GuiScreen, char, int>, GuiScreen, char, int>)GuiScreen_KeyTyped);
+        }
 
-            var handleKb = typeof(GuiScreen).GetMethod("HandleKeyboardInput", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-            if (handleKb != null)
-            {
-                _guiScreenHandleKeyboardHook = new Hook(handleKb, (Action<Action<GuiScreen>, GuiScreen>)GuiScreen_HandleKeyboardInput);
-            }
+        var handleKb = typeof(GuiScreen).GetMethod("HandleKeyboardInput", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        if (handleKb != null)
+        {
+            _guiScreenHandleKeyboardHook = new Hook(handleKb, (Action<Action<GuiScreen>, GuiScreen>)GuiScreen_HandleKeyboardInput);
+        }
 
-            var handleMouse = typeof(GuiScreen).GetMethod("HandleMouseInput", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-            if (handleMouse != null)
-            {
-                _guiScreenHandleMouseHook = new Hook(handleMouse, (Action<Action<GuiScreen>, GuiScreen>)GuiScreen_HandleMouseInput);
-            }
+        var handleMouse = typeof(GuiScreen).GetMethod("HandleMouseInput", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        if (handleMouse != null)
+        {
+            _guiScreenHandleMouseHook = new Hook(handleMouse, (Action<Action<GuiScreen>, GuiScreen>)GuiScreen_HandleMouseInput);
         }
     }
 
-    public override void PostInitialize(Side side)
+    public void PostInitializeClient()
     {
-        Console.WriteLine("SeeAllItems: post-initialize");
+        Console.WriteLine("SeeAllItems (client): post-initialize");
     }
 
-    public override void Unload(Side side)
+    public void UnloadClient()
     {
         _guiScreenRenderHook?.Dispose(); _guiScreenRenderHook = null;
         _guiScreenMouseHook?.Dispose(); _guiScreenMouseHook = null;
@@ -75,7 +66,7 @@ public class SeeAllItemsBase : ModBase
         _guiScreenHandleKeyboardHook?.Dispose(); _guiScreenHandleKeyboardHook = null;
         _guiScreenHandleMouseHook?.Dispose(); _guiScreenHandleMouseHook = null;
         OverlayInstance = null;
-        Console.WriteLine("SeeAllItems: unloading");
+        Console.WriteLine("SeeAllItems (client): unloading");
     }
 
     private static void GuiScreen_Render(Action<GuiScreen, int, int, float> orig, GuiScreen screen, int mouseX, int mouseY, float pt)
@@ -83,7 +74,7 @@ public class SeeAllItemsBase : ModBase
         // Call original first so overlay draws on top
         orig(screen, mouseX, mouseY, pt);
 
-        Console.WriteLine($"SeeAllItemsBase.GuiScreen_Render: screen={screen?.GetType().Name}, OverlayVisible={OverlayVisible}");
+        
 
         // Edge-detect R key so a single press toggles the overlay even when
         // individual screens override KeyTyped.
@@ -100,7 +91,6 @@ public class SeeAllItemsBase : ModBase
                     else
                     {
                         OverlayVisible = !OverlayVisible;
-                        Console.WriteLine($"SeeAllItemsBase: toggle -> OverlayVisible={OverlayVisible} (via render-key)");
                         if (OverlayVisible)
                         {
                             OverlayInstance ??= new SeeAllItemsOverlay();

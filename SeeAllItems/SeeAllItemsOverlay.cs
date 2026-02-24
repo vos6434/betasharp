@@ -143,7 +143,7 @@ internal class SeeAllItemsOverlay
         }
 
         filtered = new List<ItemStack>(allItems);
-        Console.WriteLine($"SeeAllItemsOverlay: constructed, totalItems={allItems.Count}");
+        
 
         // create or load a small gui texture (256x256) with two button state rows
         try
@@ -166,13 +166,12 @@ internal class SeeAllItemsOverlay
                         customButtonTextureHeight = imgRes.Height;
                         customButtonTextureWidth = imgRes.Width;
                         customButtonTextureId = mc.textureManager.Load(imgRes);
-                        Console.WriteLine($"SeeAllItemsOverlay: loaded button PNG from assembly resource '{res}', h={customButtonTextureHeight}");
+                        
                     }
                 }
             }
-            catch (Exception ex)
+                catch (Exception ex)
             {
-                Console.WriteLine("SeeAllItemsOverlay: failed to load embedded resource: " + ex);
             }
 
             // if not loaded from assembly, only try the mod file path (no other fallbacks)
@@ -184,25 +183,25 @@ internal class SeeAllItemsOverlay
                     customButtonTextureHeight = img.Height;
                     customButtonTextureWidth = img.Width;
                     customButtonTextureId = mc.textureManager.Load(img);
-                    Console.WriteLine($"SeeAllItemsOverlay: loaded button PNG from file '{outPath}', w={customButtonTextureWidth}, h={customButtonTextureHeight}");
+                    
                 }
                 else
                 {
-                    Console.WriteLine("SeeAllItemsOverlay: no custom button PNG found; buttons will be drawn without texture.");
+                    
                     customButtonTextureId = -1;
                 }
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine("SeeAllItemsOverlay: failed to create/load custom button texture: " + ex);
+            
             customButtonTextureId = -1;
         }
     }
 
     public void RenderOverlay(GuiScreen parent, int mouseX, int mouseY, float partialTicks)
     {
-        Console.WriteLine($"SeeAllItemsOverlay.RenderOverlay start: page={page}, filtered={filtered.Count}, mouse=({mouseX},{mouseY})");
+        
         int w = parent.Width;
         int h = parent.Height;
 
@@ -373,7 +372,7 @@ internal class SeeAllItemsOverlay
             }
             catch { }
 
-            try { searchField.DrawTextBox(); } catch (Exception ex) { Console.WriteLine("SeeAllItemsOverlay: DrawTextBox threw: " + ex); }
+            try { searchField.DrawTextBox(); } catch (Exception) { }
 
             try
             {
@@ -601,7 +600,7 @@ internal class SeeAllItemsOverlay
             }
 
             // debug: print which texture/height and v being used (useful for runtime verification)
-            try { Console.WriteLine($"SeeAllItemsOverlay: DrawButton textureId={customButtonTextureId}, texW={customButtonTextureWidth}, texH={customButtonTextureHeight}, v={v}, isHovered={isHovered}"); } catch { }
+            try {  } catch { }
 
             // If we have a custom texture, compute UVs using its real dimensions
             if (customButtonTextureId >= 0 && customButtonTextureWidth > 0 && customButtonTextureHeight > 0)
@@ -785,11 +784,42 @@ internal class SeeAllItemsOverlay
                         {
                             amount = new ItemStack(stackInfo.itemId, 1).getMaxCount();
                         }
-                        Console.WriteLine($"SeeAllItemsOverlay: click itemId={stackInfo.itemId} amount={amount} at globalIndex={globalIndex}");
+                        
                         if (mc.player != null)
                         {
-                            bool ok = mc.player.inventory.addItemStackToInventory(new ItemStack(stackInfo.itemId, amount));
-                            Console.WriteLine($"SeeAllItemsOverlay: addItemStackToInventory returned {ok}");
+                            try
+                            {
+                                var pc = mc.playerController;
+                                var t = pc.GetType();
+                                var fi = t.GetField("netClientHandler", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+                                if (fi != null)
+                                {
+                                    var net = fi.GetValue(pc) as BetaSharp.Client.Network.ClientNetworkHandler;
+                                    if (net != null)
+                                    {
+                                        	var stackToSend = new BetaSharp.Items.ItemStack(stackInfo.itemId, amount, (short)stackInfo.getDamage());
+                                        	var pkt = new BetaSharp.Network.Packets.C2SPlay.ClickSlotC2SPacket(127, -1, 0, false, stackToSend, 0);
+                                        	try { System.Console.WriteLine($"SeeAllItemsOverlay: sending ClickSlot pkt item={stackInfo.itemId} amt={amount}"); } catch { }
+                                        	net.addToSendQueue(pkt);
+                                    }
+                                    else
+                                    {
+                                        				try { System.Console.WriteLine($"SeeAllItemsOverlay: client fallback -> local add item={stackInfo.itemId} amt={amount}"); } catch { }
+                                        				bool ok = mc.player.inventory.addItemStackToInventory(new ItemStack(stackInfo.itemId, amount));
+                                        
+                                    }
+                                }
+                                else
+                                {
+                                     try { System.Console.WriteLine($"SeeAllItemsOverlay: no netClientHandler -> local add item={stackInfo.itemId} amt={amount}"); } catch { }
+                                     bool ok = mc.player.inventory.addItemStackToInventory(new ItemStack(stackInfo.itemId, amount));
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                
+                                try { mc.player.inventory.addItemStackToInventory(new ItemStack(stackInfo.itemId, amount)); } catch { }
+                            }
                         }
                         return true;
                     }
@@ -837,7 +867,7 @@ internal class SeeAllItemsOverlay
         if (newPage != old)
         {
             page = newPage;
-            Console.WriteLine($"SeeAllItemsOverlay: wheel -> page {old} -> {page} (notches={notches}, accel={scrollAcceleration})");
+            
             return true;
         }
 
@@ -904,14 +934,14 @@ internal class SeeAllItemsOverlay
             if (eventKey == Keyboard.KEY_I)
             {
                 showIds = !showIds;
-                Console.WriteLine($"SeeAllItemsOverlay: showIds -> {showIds}");
+                
                 return true;
             }
             // toggle showing hidden items with 'H' key
             if (eventKey == Keyboard.KEY_H)
             {
                 showHiddenItems = !showHiddenItems;
-                Console.WriteLine($"SeeAllItemsOverlay: showHiddenItems -> {showHiddenItems}");
+                
                 // rebuild filter/source to apply immediately
                 ApplyFilter(searchField?.GetText() ?? "");
                 return true;
