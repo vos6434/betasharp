@@ -13,6 +13,7 @@ public class SeeAllItemsBase : ModBase
     private Hook? _guiScreenMouseHook;
     private Hook? _guiScreenKeyHook;
         private Hook? _guiScreenHandleKeyboardHook;
+        private Hook? _guiScreenHandleMouseHook;
 
     private static SeeAllItemsOverlay? OverlayInstance;
     private static bool OverlayVisible = false;
@@ -52,6 +53,12 @@ public class SeeAllItemsBase : ModBase
             {
                 _guiScreenHandleKeyboardHook = new Hook(handleKb, (Action<Action<GuiScreen>, GuiScreen>)GuiScreen_HandleKeyboardInput);
             }
+
+            var handleMouse = typeof(GuiScreen).GetMethod("HandleMouseInput", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            if (handleMouse != null)
+            {
+                _guiScreenHandleMouseHook = new Hook(handleMouse, (Action<Action<GuiScreen>, GuiScreen>)GuiScreen_HandleMouseInput);
+            }
         }
     }
 
@@ -66,6 +73,7 @@ public class SeeAllItemsBase : ModBase
         _guiScreenMouseHook?.Dispose(); _guiScreenMouseHook = null;
         _guiScreenKeyHook?.Dispose(); _guiScreenKeyHook = null;
         _guiScreenHandleKeyboardHook?.Dispose(); _guiScreenHandleKeyboardHook = null;
+        _guiScreenHandleMouseHook?.Dispose(); _guiScreenHandleMouseHook = null;
         OverlayInstance = null;
         Console.WriteLine("SeeAllItems: unloading");
     }
@@ -184,6 +192,40 @@ public class SeeAllItemsBase : ModBase
         }
 
         orig(screen);
+    }
+
+    private static void GuiScreen_HandleMouseInput(Action<GuiScreen> orig, GuiScreen screen)
+    {
+        // call original first (so clicks and other mouse events are processed)
+        orig(screen);
+
+        if (OverlayVisible && OverlayInstance != null)
+        {
+            try
+            {
+                int wheel = Mouse.getEventDWheel();
+                if (wheel != 0)
+                {
+                    int x = Mouse.getEventX() * screen.Width / screen.mc.displayWidth;
+                    int y = screen.Height - Mouse.getEventY() * screen.Height / screen.mc.displayHeight - 1;
+                    try
+                    {
+                        if (OverlayInstance.HandleMouseScrolled(screen, x, y, wheel))
+                        {
+                            // consumed by overlay; nothing further to do
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine("SeeAllItems: HandleMouseInput -> HandleMouseScrolled threw: " + ex);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("SeeAllItems: HandleMouseInput hook error: " + ex);
+            }
+        }
     }
 
     private static void GuiScreen_KeyTyped(Action<GuiScreen, char, int> orig, GuiScreen screen, char eventChar, int eventKey)

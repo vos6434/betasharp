@@ -35,6 +35,9 @@ internal class SeeAllItemsOverlay
     private int leftInset = 2;
     private int rightInset = 2;
     private int page = 0;
+    // optional scroll behavior controls
+    private bool invertScroll = false;
+    private float scrollAcceleration = 1.0f; // multiplier applied to wheel notches
     // runtime-generated custom button texture id (if created)
     private int customButtonTextureId = -1;
     // height of the loaded custom button texture (used to select v offsets)
@@ -254,25 +257,7 @@ internal class SeeAllItemsOverlay
             }
         }
 
-        // handle mouse wheel for page navigation
-        try
-        {
-            int wheel = Mouse.getEventDWheel();
-            if (wheel != 0)
-            {
-                        int rowsLocal = RowsPerPanel(panelY, panelH);
-                        int perPageWheel = Math.Max(1, rowsLocal * columnsLocal);
-                int maxPages = Math.Max(1, (int)Math.Ceiling(filtered.Count / (double)perPage));
-                int old = page;
-                if (wheel > 0) page = Math.Max(0, page - 1);
-                else page = Math.Min(maxPages - 1, page + 1);
-                if (page != old) Console.WriteLine($"SeeAllItemsOverlay: wheel -> page {old} -> {page}");
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine("SeeAllItemsOverlay: wheel read threw: " + ex);
-        }
+        // Mouse wheel handling moved to HandleMouseScrolled to follow NEI pattern
 
         // draw search field using the game's GuiTextField implementation so it matches vanilla
         if (searchField != null)
@@ -725,6 +710,49 @@ internal class SeeAllItemsOverlay
 
         // pass to slot (fallback) only if click is over the panel
         if (slot != null && IsMouseOver(parent, x, y) && slot.HandleMouseClicked(parent, x, y, button)) return true;
+
+        return false;
+    }
+
+    // NEI-style mouse wheel handler: called by GUI manager when wheel events occur.
+    // Returns true when the overlay consumed the scroll event.
+    public bool HandleMouseScrolled(GuiScreen parent, int mouseX, int mouseY, int scrolled)
+    {
+        // don't scroll while typing in the search field
+        if (IsTyping())
+            return false;
+
+        // only handle wheel when mouse is over the overlay panel
+        if (!IsMouseOver(parent, mouseX, mouseY))
+            return false;
+
+        GetPanelBounds(parent, out int panelX, out int panelY, out int panelW, out int panelH);
+        int columnsLocal = Math.Max(1, (panelW - (leftInset + rightInset) + padding) / (cellSize + padding));
+        int rowsLocal = RowsPerPanel(panelY, panelH);
+        int perPage = Math.Max(1, rowsLocal * columnsLocal);
+        int maxPages = Math.Max(1, (int)Math.Ceiling(filtered.Count / (double)perPage));
+        // Convert raw wheel delta into notches (Minecraft/LWJGL typically uses multiples of 120)
+        int notches = scrolled / 120;
+        if (notches == 0) notches = scrolled > 0 ? 1 : -1;
+
+        // apply inversion if enabled
+        if (invertScroll) notches = -notches;
+
+        // apply acceleration multiplier
+        int move = (int)Math.Round(notches * scrollAcceleration);
+        if (move == 0) move = Math.Sign(notches);
+
+        int old = page;
+        int newPage = page - move; // positive move => go to earlier pages
+        if (newPage < 0) newPage = 0;
+        if (newPage > maxPages - 1) newPage = maxPages - 1;
+
+        if (newPage != old)
+        {
+            page = newPage;
+            Console.WriteLine($"SeeAllItemsOverlay: wheel -> page {old} -> {page} (notches={notches}, accel={scrollAcceleration})");
+            return true;
+        }
 
         return false;
     }
