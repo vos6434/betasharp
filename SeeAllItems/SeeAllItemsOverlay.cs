@@ -63,7 +63,23 @@ internal class SeeAllItemsOverlay
         {
             var it = Item.ITEMS[i];
             if (it == null) continue;
-            allItems.Add(new ItemStack(i, 1));
+            // If the item has subtypes (metadata variants) add a representative stack for each
+            if (it.getHasSubtypes())
+            {
+                // common maximum of 16 variants (safe for dyes/cloth/logs/etc.)
+                for (int meta = 0; meta < 16; meta++)
+                {
+                    try
+                    {
+                        allItems.Add(new ItemStack(i, 1, meta));
+                    }
+                    catch { }
+                }
+            }
+            else
+            {
+                allItems.Add(new ItemStack(i, 1));
+            }
         }
 
         filtered = new List<ItemStack>(allItems);
@@ -843,7 +859,16 @@ internal class SeeAllItemsOverlay
         else
         {
             var low = q.ToLowerInvariant();
-            filtered = allItems.Where(s => (s.getItemName() ?? "").ToLowerInvariant().Contains(low) || s.itemId.ToString().Contains(low)).ToList();
+            filtered = allItems.Where(s =>
+            {
+                // Prefer the translated display name when searching so users can type "wool" not translation keys
+                string disp = "";
+                try { disp = TranslationStorage.Instance.TranslateNamedKey(s.getItemName() ?? ""); } catch { disp = s.getItemName() ?? ""; }
+                if (disp != null && disp.ToLowerInvariant().Contains(low)) return true;
+                if ((s.getItemName() ?? "").ToLowerInvariant().Contains(low)) return true;
+                if (s.itemId.ToString().Contains(low)) return true;
+                return false;
+            }).ToList();
         }
         // recreate slot data
         slot = null;
