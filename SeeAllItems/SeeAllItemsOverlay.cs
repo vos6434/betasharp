@@ -36,7 +36,7 @@ internal class SeeAllItemsOverlay
     private int rightInset = 2;
     private int page = 0;
     // optional scroll behavior controls
-    private bool invertScroll = false;
+    private bool invertScroll = true;
     private float scrollAcceleration = 1.0f; // multiplier applied to wheel notches
     // runtime-generated custom button texture id (if created)
     private int customButtonTextureId = -1;
