@@ -65,6 +65,8 @@ internal class SeeAllItemsOverlay
         {
             var it = Item.ITEMS[i];
             if (it == null) continue;
+            // hide these block IDs only when hidden-items is disabled
+            if (!showHiddenItems && (i == 63 || i == 68)) continue;
             // If the item has subtypes (metadata variants) add a representative stack for each
             if (it.getHasSubtypes())
             {
@@ -77,6 +79,10 @@ internal class SeeAllItemsOverlay
                         // but still validate it reports a name/id below.
                         if (!showHiddenItems)
                         {
+                            // completely hide these block IDs (including base variant)
+                            if (i == 63) continue; // id 63
+                            if (i == 68) continue; // id 68
+
                             if (meta == 0)
                             {
                                 var baseStack = new ItemStack(i, 1, 0);
@@ -96,6 +102,9 @@ internal class SeeAllItemsOverlay
                             if (i == 6 && !(meta == 1 || meta == 2)) continue;  // id 6
                             if (i == 18 && meta != 1) continue;                  // id 18
                             if (i == 44 && !(meta == 1 || meta == 2 || meta == 3)) continue; // id 44
+                            // hide extra variants for these blocks when hidden-items is disabled
+                            if (i == 63 && meta != 0) continue; // id 63
+                            if (i == 68 && meta != 0) continue; // id 68
                             if (i == 7 && meta != 0) continue;                   // coal (id 7)
                         }
 
