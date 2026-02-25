@@ -18,7 +18,7 @@
 
   <Target Name="BuildModsAfterClient" AfterTargets="Build" Condition="'$(DesignTimeBuild)' != 'true'">
     <PropertyGroup>
-      <ModProjects>..\HungerMod\HungerMod.csproj;..\SeeAllItems\SeeAllItems.csproj</ModProjects>
+      <ModProjects>..\HungerMod\HungerMod.csproj;..\SeeAllItems\SeeAllItems.csproj;..\Nostalgia\Nostalgia.csproj</ModProjects>
     </PropertyGroup>
     <MSBuild Projects="$(ModProjects)"
              Targets="Build"

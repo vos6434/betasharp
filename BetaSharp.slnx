@@ -11,4 +11,5 @@
     <!-- <Project Path="ExampleMod\ExampleMod.csproj" Type="Classic C#" /> -->
     <Project Path="HungerMod/HungerMod.csproj" Type="Classic C#" />
     <Project Path="SeeAllItems/SeeAllItems.csproj" Type="Classic C#" />
+    <Project Path="Nostalgia/Nostalgia.csproj" Type="Classic C#" />
 </Solution>

@@ -4,6 +4,12 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <AssemblyName>Nostalgia</AssemblyName>
+    <RootNamespace>Nostalgia</RootNamespace>
+    <AssemblyVersion>0.0.0.1</AssemblyVersion>
+    <AssemblyInformationalVersion>1.0.0</AssemblyInformationalVersion>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <ModsOutputDir>$(AppData)\.BetaSharp\mods\</ModsOutputDir>
   </PropertyGroup>
 
   <ItemGroup>
@@ -12,10 +18,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Costura.Fody" Version="6.0.0">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
+    <PackageReference Include="Costura.Fody" Version="6.0.0" PrivateAssets="all" />
     <PackageReference Include="MonoMod" Version="22.7.31.1" PrivateAssets="none">
       <PrivateAssets>none</PrivateAssets>
     </PackageReference>
@@ -23,5 +26,10 @@
       <PrivateAssets>none</PrivateAssets>
     </PackageReference>
   </ItemGroup>
+
+  <Target Name="CopyModDllToModsFolder" AfterTargets="Build" Condition="'$(DesignTimeBuild)' != 'true'">
+    <MakeDir Directories="$(ModsOutputDir)" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ModsOutputDir)" SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>
