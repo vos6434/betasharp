@@ -16,4 +16,14 @@
     <PackageReference Include="SixLabors.ImageSharp.Drawing" Version="2.1.7" />
   </ItemGroup>
 
+  <Target Name="BuildModsAfterClient" AfterTargets="Build" Condition="'$(DesignTimeBuild)' != 'true'">
+    <PropertyGroup>
+      <ModProjects>..\HungerMod\HungerMod.csproj;..\SeeAllItems\SeeAllItems.csproj</ModProjects>
+    </PropertyGroup>
+    <MSBuild Projects="$(ModProjects)"
+             Targets="Build"
+             Properties="Configuration=$(Configuration);Platform=$(Platform)"
+             StopOnFirstFailure="true" />
+  </Target>
+
 </Project>
