@@ -15,6 +15,7 @@ using BetaSharp.NBT;
 using BetaSharp.Worlds;
 using MonoMod.RuntimeDetour;
 using Silk.NET.OpenGL.Legacy;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace HungerMod;
 
@@ -72,9 +73,15 @@ public class HungerModBase : ModBase
     private Hook? _playerControllerMPSendUseItemHook;
     private Hook? _guiModsRenderHook;
 
-    public override string Name => "Hunger Mod";
-    public override string Description => "Valheim-style timed food buffs for health and regeneration.";
-    public override string Author => "vos6434";
+    public HungerModBase()
+    {
+        Name = "Hunger Mod";
+        Description = "Valheim-style timed food buffs for health and regeneration.";
+        Author = "vos6434";
+        Version = "1.0.0";
+        Logger = NullLogger.Instance;
+    }
+
     public override bool HasOptionsMenu => true;
 
     public override void OpenOptionsMenu()
@@ -1707,7 +1714,7 @@ public class HungerModBase : ModBase
                 _parent.SetFieldFocused(index);
             }
 
-            protected override bool isSelected(int slotIndex) => false;
+            protected override bool IsSelected(int slotIndex) => false;
 
             protected override void DrawBackground() { }
 
