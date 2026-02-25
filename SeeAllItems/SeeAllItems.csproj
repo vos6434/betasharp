@@ -7,6 +7,8 @@
     <AssemblyName>SeeAllItems</AssemblyName>
     <RootNamespace>SeeAllItems</RootNamespace>
     <AssemblyVersion>0.0.0.1</AssemblyVersion>
+    <AssemblyInformationalVersion>1.0.0</AssemblyInformationalVersion>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <ModsOutputDir>$(AppData)\.BetaSharp\mods\</ModsOutputDir>
   </PropertyGroup>
 
