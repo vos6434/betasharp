@@ -1,15 +1,12 @@
 using BetaSharp.Client.Options;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using Avalonia;
-using Avalonia.Controls;
 using BetaSharp.Blocks;
 using BetaSharp.Client.Achievements;
 using BetaSharp.Client.Entities;
 using BetaSharp.Client.Guis;
 using BetaSharp.Client.Input;
 using BetaSharp.Client.Network;
-using BetaSharp.Client.Options;
 using BetaSharp.Client.Rendering;
 using BetaSharp.Client.Rendering.Blocks;
 using BetaSharp.Client.Rendering.Core;
@@ -21,7 +18,6 @@ using BetaSharp.Client.Sound;
 using BetaSharp.Client.Textures;
 using BetaSharp.Entities;
 using BetaSharp.Items;
-using BetaSharp.Launcher;
 using BetaSharp.Modding;
 using BetaSharp.Profiling;
 using BetaSharp.Server.Internal;
@@ -33,21 +29,27 @@ using BetaSharp.Worlds;
 using BetaSharp.Worlds.Colors;
 using BetaSharp.Worlds.Storage;
 using ImGuiNET;
+using Microsoft.Extensions.Logging;
 using Silk.NET.Input;
 using Silk.NET.OpenGL.Legacy;
 using Silk.NET.OpenGL.Legacy.Extensions.ImGui;
+using Exception = System.Exception;
+using BetaSharp.Client.Rendering.Core.Textures;
+using BetaSharp.Client.Rendering.Core.OpenGL;
 
 namespace BetaSharp.Client;
 
 public partial class Minecraft
 {
     public static Minecraft INSTANCE;
+    private readonly ILogger<Minecraft> _logger = Log.Instance.For<Minecraft>();
     public PlayerController playerController;
     private bool fullscreen;
     private bool hasCrashed;
     public int displayWidth;
     public int displayHeight;
-    private readonly Timer timer = new(20.0F);
+
+    public Timer Timer { get; } = new(20.0F);
     public World world;
     public WorldRenderer terrainRenderer;
     public ClientPlayerEntity player;
@@ -69,13 +71,13 @@ public partial class Minecraft
     public GuiAchievement guiAchievement;
     public GuiIngame ingameGUI;
     public bool skipRenderWorld;
-    public HitResult objectMouseOver = null;
+    public HitResult objectMouseOver = new HitResult(HitResultType.MISS);
     public GameOptions options;
     public SoundManager sndManager = new();
     public MouseHelper mouseHelper;
     public TexturePacks texturePackList;
     private java.io.File mcDataDir;
-    private WorldStorageSource saveLoader;
+    private IWorldStorageSource saveLoader;
     public static long[] frameTimes = new long[512];
     public static long[] tickTimes = new long[512];
     public static int numRecordedFrameTimes;
@@ -96,6 +98,7 @@ public partial class Minecraft
     private int joinPlayerCounter;
     private ImGuiController imGuiController;
     public InternalServer? internalServer;
+    private GLErrorHandler _glErrorHandler;
 
     public Minecraft(int width, int height, bool isFullscreen)
     {
@@ -137,7 +140,7 @@ public partial class Minecraft
     public void onMinecraftCrash(Exception crashInfo)
     {
         hasCrashed = true;
-        Log.Fatal(crashInfo, "The game has crashed!");
+        _logger.LogError(crashInfo, "The game has crashed!");
     }
 
     public void setServer(string name, int port)
@@ -150,11 +153,16 @@ public partial class Minecraft
     {
         InitializeTimer();
 
+        int maximumWidth = Display.getDisplayMode().getWidth();
+        int maximumHeight = Display.getDisplayMode().getHeight();
+
         if (fullscreen)
         {
             Display.setFullscreen(true);
-            displayWidth = Display.getDisplayMode().getWidth();
-            displayHeight = Display.getDisplayMode().getHeight();
+
+            displayWidth = maximumWidth;
+            displayHeight = maximumHeight;
+
             if (displayWidth <= 0)
             {
                 displayWidth = 1;
@@ -168,6 +176,7 @@ public partial class Minecraft
         else
         {
             Display.setDisplayMode(new DisplayMode(displayWidth, displayHeight));
+            Display.setLocation((maximumWidth - displayWidth)  / 2 , (maximumHeight  - displayHeight)  / 2);
         }
 
         Display.setTitle("Minecraft Beta 1.7.3");
@@ -176,7 +185,7 @@ public partial class Minecraft
 
         Mods.LoadMods(mcDataDir.getAbsolutePath(), Side.Both);
 
-        saveLoader = new RegionWorldStorageSource(new java.io.File(mcDataDir, "saves"));
+        saveLoader = new RegionWorldStorageSource(System.IO.Path.Combine(mcDataDir.getAbsolutePath(), "saves"));
         options = new GameOptions(this, mcDataDir.getAbsolutePath());
         Profiler.Enabled = options.DebugMode;
 
@@ -184,25 +193,33 @@ public partial class Minecraft
         {
             int[] msaaValues = [0, 2, 4, 8];
             Display.MSAA_Samples = msaaValues[options.MSAALevel];
+            Display.DebugMode = options.DebugMode;
 
             Display.create();
-            Display.getGlfw().SetWindowSizeLimits(Display.getWindowHandle(), 850, 480, 3840, 2160);
+            Display.getGlfw().SetWindowSizeLimits(Display.getWindowHandle(), 850, 480, maximumWidth, maximumHeight);
 
             GLManager.Init(Display.getGL()!);
+
+            Display.getGlfw().SwapInterval(options.VSync ? 1 : 0);
+
+            if (options.DebugMode)
+            {
+                _glErrorHandler = new();
+            }
         }
         catch (Exception ex)
         {
-            Log.Error(ex);
+            _logger.LogError(ex, "Exception");
         }
         texturePackList = new TexturePacks(this, new DirectoryInfo(mcDataDir.getAbsolutePath()));
-        textureManager = new TextureManager(texturePackList, options);
+        textureManager = new TextureManager(this, texturePackList, options);
         fontRenderer = new TextRenderer(options, textureManager);
         WaterColors.loadColors(textureManager.GetColors("/misc/watercolor.png"));
         GrassColors.loadColors(textureManager.GetColors("/misc/grasscolor.png"));
         FoliageColors.loadColors(textureManager.GetColors("/misc/foliagecolor.png"));
         gameRenderer = new GameRenderer(this);
         EntityRenderDispatcher.instance.heldItemRenderer = new HeldItemRenderer(this);
-        statFileWriter = new StatFileWriter(session, mcDataDir);
+        statFileWriter = new StatFileWriter(session, mcDataDir.getAbsolutePath());
 
         StatStringFormatKeyInv format = new(this);
         BetaSharp.Achievements.OpenInventory.GetTranslatedDescription = () =>
@@ -213,13 +230,13 @@ public partial class Minecraft
         loadScreen();
 
         bool anisotropicFiltering = GLManager.GL.IsExtensionPresent("GL_EXT_texture_filter_anisotropic");
-        Log.Info($"Anisotropic Filtering Supported: {anisotropicFiltering}");
+        _logger.LogInformation($"Anisotropic Filtering Supported: {anisotropicFiltering}");
 
         if (anisotropicFiltering)
         {
             GLManager.GL.GetFloat(GLEnum.MaxTextureMaxAnisotropy, out float maxAnisotropy);
             GameOptions.MaxAnisotropy = maxAnisotropy;
-            Log.Info($"Max Anisotropy: {maxAnisotropy}");
+            _logger.LogInformation($"Max Anisotropy: {maxAnisotropy}");
         }
         else
         {
@@ -230,12 +247,12 @@ public partial class Minecraft
         {
             var window = Display.getWindow();
             var input = window.CreateInput();
-            imGuiController = new(GLManager.GL, window, input);
+            imGuiController = new(((LegacyGL)GLManager.GL).SilkGL, window, input);
             imGuiController.MakeCurrent();
         }
         catch (Exception e)
         {
-            Log.Error(e, "Failed to initialize ImGui");
+            _logger.LogError($"Failed to initialize ImGui: {e}");
             imGuiController = null;
         }
 
@@ -257,6 +274,7 @@ public partial class Minecraft
         GLManager.GL.MatrixMode(GLEnum.Modelview);
         checkGLError("Startup");
         sndManager.LoadSoundSettings(options);
+        DefaultMusicCategories.Register(sndManager);
         textureManager.AddDynamicTexture(textureLavaFX);
         textureManager.AddDynamicTexture(textureWaterFX);
         textureManager.AddDynamicTexture(new NetherPortalSprite());
@@ -270,8 +288,17 @@ public partial class Minecraft
         GLManager.GL.Viewport(0, 0, (uint)displayWidth, (uint)displayHeight);
         particleManager = new ParticleManager(world, textureManager);
 
-        MinecraftResourceDownloader downloader = new(this, mcDataDir.getAbsolutePath());
-        _ = downloader.DownloadResourcesAsync();
+        string dataDirPath = mcDataDir.getAbsolutePath();
+
+        _ = new ResourceManager()
+            .Add(new BetaResourceDownloader(this, dataDirPath))
+            .Add(new ModernAssetDownloader(this, dataDirPath,
+                [
+                 "minecraft/sounds/music/menu/moog_city_2.ogg",
+                 "minecraft/sounds/music/menu/mutation.ogg",
+                 "minecraft/sounds/music/menu/floating_trees.ogg",
+                 "minecraft/sounds/music/menu/beginning_2.ogg",
+                ])).LoadAllAsync();
 
         checkGLError("Post startup");
         ingameGUI = new GuiIngame(this);
@@ -302,7 +329,8 @@ public partial class Minecraft
         GLManager.GL.Disable(GLEnum.Lighting);
         GLManager.GL.Enable(GLEnum.Texture2D);
         GLManager.GL.Disable(GLEnum.Fog);
-        GLManager.GL.BindTexture(GLEnum.Texture2D, (uint)textureManager.GetTextureId("/title/mojang.png"));
+        GLManager.GL.Color4(1.0F, 1.0F, 1.0F, 1.0F);
+        textureManager.BindTexture(textureManager.GetTextureId("/title/mojang.png"));
         tessellator.startDrawingQuads();
         tessellator.setColorOpaque_I(0xFFFFFF);
         tessellator.addVertexWithUV(0.0D, (double)displayHeight, 0.0D, 0.0D, 0.0D);
@@ -341,21 +369,26 @@ public partial class Minecraft
         return new java.io.File(PathHelper.GetAppDir(nameof(BetaSharp)));
     }
 
-    public WorldStorageSource getSaveLoader()
+    public IWorldStorageSource getSaveLoader()
     {
         return saveLoader;
     }
 
-    public void displayGuiScreen(GuiScreen newScreen)
+    public void displayGuiScreen(GuiScreen? newScreen)
     {
         currentScreen?.OnGuiClosed();
 
         if (newScreen is GuiMainMenu)
         {
-            statFileWriter.func_27175_b();
+            statFileWriter.Tick();
+
+            if (inGameHasFocus)
+            {
+                sndManager.StopCurrentMusic();
+            }
         }
 
-        statFileWriter.syncStats();
+        statFileWriter.SyncStats();
         if (newScreen == null && world == null)
         {
             newScreen = new GuiMainMenu();
@@ -390,6 +423,7 @@ public partial class Minecraft
         else
         {
             setIngameFocus();
+            sndManager.StopMusic(DefaultMusicCategories.Menu);
         }
     }
 
@@ -399,10 +433,10 @@ public partial class Minecraft
         GLEnum glError = GLManager.GL.GetError();
         if (glError != 0)
         {
-            Log.Error($"#### GL ERROR ####");
-            Log.Error($"@ {location}");
-            Log.Error($"> {glError.ToString()}");
-            Log.Error($"");
+            _logger.LogError($"#### GL ERROR ####");
+            _logger.LogError($"@ {location}");
+            _logger.LogError($"> {glError.ToString()}");
+            _logger.LogError($"");
         }
     }
 
@@ -411,26 +445,29 @@ public partial class Minecraft
         try
         {
             stopInternalServer();
-            statFileWriter.func_27175_b();
-            statFileWriter.syncStats();
+            statFileWriter.Tick();
+            statFileWriter.SyncStats();
 
-            Log.Info("Stopping!");
+            _logger.LogInformation("Stopping!");
 
             try
             {
                 changeWorld((World)null);
             }
-            catch (Exception worldChangeException) { }
+            catch (Exception) { }
 
             try
             {
                 GLAllocation.deleteTexturesAndDisplayLists();
             }
-            catch (Exception textureCleanupException) { }
+            catch (Exception) { }
 
+            textureManager.Dispose();
             sndManager.CloseMinecraft();
             Mouse.destroy();
             Keyboard.destroy();
+
+            GLTexture.LogLeakReport();
         }
         finally
         {
@@ -467,8 +504,8 @@ public partial class Minecraft
             {
                 if (options.DebugMode)
                 {
-                    Profiler.Update(timer.DeltaTime);
-                    Profiler.Record("frame Time", timer.DeltaTime * 1000.0f);
+                    Profiler.Update(Timer.DeltaTime);
+                    Profiler.Record("frame Time", Timer.DeltaTime * 1000.0f);
                     Profiler.PushGroup("run");
                 }
                 try
@@ -480,13 +517,13 @@ public partial class Minecraft
 
                     if (isGamePaused && world != null)
                     {
-                        float previousRenderPartialTicks = timer.renderPartialTicks;
-                        timer.UpdateTimer();
-                        timer.renderPartialTicks = previousRenderPartialTicks;
+                        float previousRenderPartialTicks = Timer.renderPartialTicks;
+                        Timer.UpdateTimer();
+                        Timer.renderPartialTicks = previousRenderPartialTicks;
                     }
                     else
                     {
-                        timer.UpdateTimer();
+                        Timer.UpdateTimer();
                     }
 
                     long tickStartTime = java.lang.System.nanoTime();
@@ -495,15 +532,15 @@ public partial class Minecraft
                         Profiler.PushGroup("runTicks");
                     }
 
-                    for (int tickIndex = 0; tickIndex < timer.elapsedTicks; ++tickIndex)
+                    for (int tickIndex = 0; tickIndex < Timer.elapsedTicks; ++tickIndex)
                     {
                         ++ticksRan;
 
                         try
                         {
-                            runTick(timer.renderPartialTicks);
+                            runTick(Timer.renderPartialTicks);
                         }
-                        catch (MinecraftException tickException)
+                        catch (MinecraftException)
                         {
                             world = null;
                             changeWorld((World)null);
@@ -519,7 +556,7 @@ public partial class Minecraft
                     long tickElapsedTime = java.lang.System.nanoTime() - tickStartTime;
                     checkGLError("Pre render");
                     BlockRenderer.fancyGrass = true;
-                    sndManager.UpdateListener(player, timer.renderPartialTicks);
+                    sndManager.UpdateListener(player, Timer.renderPartialTicks);
                     GLManager.GL.Enable(GLEnum.Texture2D);
                     if (world != null)
                     {
@@ -540,21 +577,34 @@ public partial class Minecraft
 
                     if (!skipRenderWorld)
                     {
-                        playerController?.setPartialTime(timer.renderPartialTicks);
+                        playerController?.setPartialTime(Timer.renderPartialTicks);
 
-                        if (options.DebugMode) Profiler.PushGroup("render");
-                        gameRenderer.onFrameUpdate(timer.renderPartialTicks);
-                        if (options.DebugMode) Profiler.PopGroup();
+                        if (options.DebugMode)
+                        {
+                            Profiler.PushGroup("render");
+                            TextureStats.StartFrame();
+                        }
+                        gameRenderer.onFrameUpdate(Timer.renderPartialTicks);
+                        if (options.DebugMode)
+                        {
+                            TextureStats.EndFrame();
+                            Profiler.PopGroup();
+                        }
                     }
 
-                    if (imGuiController != null && timer.DeltaTime > 0.0f && options.ShowDebugInfo && options.DebugMode)
+                    if (imGuiController != null && Timer.DeltaTime > 0.0f && options.ShowDebugInfo && options.DebugMode)
                     {
-                        imGuiController.Update(timer.DeltaTime);
+                        imGuiController.Update(Timer.DeltaTime);
                         ProfilerRenderer.Draw();
                         ProfilerRenderer.DrawGraph();
 
                         ImGui.Begin("Render Info");
                         ImGui.Text($"Chunk Vertex Buffer Allocated MB: {VertexBuffer<ChunkVertex>.Allocated / 1000000.0}");
+                        ImGui.Text($"ChunkMeshVersion Allocated: {BetaSharp.Util.ChunkMeshVersion.TotalAllocated}");
+                        ImGui.Text($"ChunkMeshVersion Released: {BetaSharp.Util.ChunkMeshVersion.TotalReleased}");
+                        ImGui.Separator();
+                        ImGui.Text($"Texture Binds: {TextureStats.BindsLastFrame} (Avg: {TextureStats.AverageBindsPerFrame:F1}/f)");
+                        ImGui.Text($"Active Textures: {GLTexture.ActiveTextureCount}");
                         ImGui.End();
 
                         imGuiController.Render();
@@ -639,7 +689,7 @@ public partial class Minecraft
                 }
             }
         }
-        catch (MinecraftShutdownException) {}
+        catch (MinecraftShutdownException) { }
         catch (Exception unexpectedException)
         {
             crashCleanup();
@@ -802,7 +852,7 @@ public partial class Minecraft
             internalServer.stop();
             while (!internalServer.stopped)
             {
-                System.Threading.Thread.Sleep(1);
+                Thread.Sleep(1);
             }
             internalServer = null;
         }
@@ -838,14 +888,14 @@ public partial class Minecraft
 
             if (mouseButton != 0 || leftClickCounter <= 0)
             {
-                if (isHoldingMouse && objectMouseOver != null && objectMouseOver.type == HitResultType.TILE &&
+                if (isHoldingMouse && objectMouseOver.Type != HitResultType.MISS && objectMouseOver.Type == HitResultType.TILE &&
                     mouseButton == 0)
                 {
-                    int blockX = objectMouseOver.blockX;
-                    int blockY = objectMouseOver.blockY;
-                    int blockZ = objectMouseOver.blockZ;
-                    playerController.sendBlockRemoving(blockX, blockY, blockZ, objectMouseOver.side);
-                    particleManager.addBlockHitEffects(blockX, blockY, blockZ, objectMouseOver.side);
+                    int blockX = objectMouseOver.BlockX;
+                    int blockY = objectMouseOver.BlockY;
+                    int blockZ = objectMouseOver.BlockZ;
+                    playerController.sendBlockRemoving(blockX, blockY, blockZ, objectMouseOver.Side);
+                    particleManager.addBlockHitEffects(blockX, blockY, blockZ, objectMouseOver.Side);
                 }
                 else
                 {
@@ -865,34 +915,34 @@ public partial class Minecraft
             }
 
             bool shouldPerformSecondaryAction = true;
-            if (objectMouseOver == null)
+            if (objectMouseOver.Type == HitResultType.MISS)
             {
                 if (mouseButton == 0)
                 {
                     leftClickCounter = 10;
                 }
             }
-            else if (objectMouseOver.type == HitResultType.ENTITY)
+            else if (objectMouseOver.Type == HitResultType.ENTITY)
             {
                 if (mouseButton == 0)
                 {
-                    playerController.attackEntity(player, objectMouseOver.entity);
+                    playerController.attackEntity(player, objectMouseOver.Entity);
                 }
 
                 if (mouseButton == 1)
                 {
-                    playerController.interactWithEntity(player, objectMouseOver.entity);
+                    playerController.interactWithEntity(player, objectMouseOver.Entity);
                 }
             }
-            else if (objectMouseOver.type == HitResultType.TILE)
+            else if (objectMouseOver.Type == HitResultType.TILE)
             {
-                int blockX = objectMouseOver.blockX;
-                int blockY = objectMouseOver.blockY;
-                int blockZ = objectMouseOver.blockZ;
-                int blockSide = objectMouseOver.side;
+                int blockX = objectMouseOver.BlockX;
+                int blockY = objectMouseOver.BlockY;
+                int blockZ = objectMouseOver.BlockZ;
+                int blockSide = objectMouseOver.Side;
                 if (mouseButton == 0)
                 {
-                    playerController.clickBlock(blockX, blockY, blockZ, objectMouseOver.side);
+                    playerController.clickBlock(blockX, blockY, blockZ, objectMouseOver.Side);
                 }
                 else
                 {
@@ -997,7 +1047,7 @@ public partial class Minecraft
         }
         catch (Exception displayException)
         {
-            Log.Error(displayException, "Failed to toggle fullscreen");
+            _logger.LogError(displayException.ToString());
         }
     }
 
@@ -1028,9 +1078,9 @@ public partial class Minecraft
 
     private void clickMiddleMouseButton()
     {
-        if (objectMouseOver != null)
+        if (objectMouseOver.Type != HitResultType.MISS)
         {
-            int blockId = world.getBlockId(objectMouseOver.blockX, objectMouseOver.blockY, objectMouseOver.blockZ);
+            int blockId = world.getBlockId(objectMouseOver.BlockX, objectMouseOver.BlockY, objectMouseOver.BlockZ);
             if (blockId == Block.GrassBlock.id)
             {
                 blockId = Block.Dirt.id;
@@ -1054,9 +1104,24 @@ public partial class Minecraft
     {
         Profiler.PushGroup("runTick");
 
-        Profiler.Start("statFileWriter.func_27178_d");
-        statFileWriter.func_27178_d();
-        Profiler.Stop("statFileWriter.func_27178_d");
+        Profiler.Start("statFileWriter.SyncStatsIfReady");
+        statFileWriter.SyncStatsIfReady();
+        Profiler.Stop("statFileWriter.SyncStatsIfReady");
+
+        if (!inGameHasFocus && world == null && internalServer == null)
+        {
+            if (options.MenuMusic)
+            {
+                sndManager.PlayRandomMusicIfReady(DefaultMusicCategories.Menu);
+            }
+            else
+            {
+                sndManager.StopMusic(DefaultMusicCategories.Menu);
+            }
+        }
+
+
+
         Profiler.Start("ingameGUI.updateTick");
         ingameGUI.updateTick();
         Profiler.Stop("ingameGUI.updateTick");
@@ -1077,7 +1142,7 @@ public partial class Minecraft
         Profiler.Stop("playerControllerUpdate");
 
         Profiler.Start("updateDynamicTextures");
-        GLManager.GL.BindTexture(GLEnum.Texture2D, (uint)textureManager.GetTextureId("/terrain.png"));
+        textureManager.BindTexture(textureManager.GetTextureId("/terrain.png"));
         if (!isGamePaused)
         {
             textureManager.Tick();
@@ -1261,7 +1326,7 @@ public partial class Minecraft
             --leftClickCounter;
         }
 
-        while (Keyboard.next())
+        while (Keyboard.Next())
         {
             player.handleKeyPress(Keyboard.getEventKey(), Keyboard.getEventKeyState());
 
@@ -1350,8 +1415,7 @@ public partial class Minecraft
 
                     if (Keyboard.getEventKey() == options.KeyBindToggleFog.keyCode)
                     {
-                        options.SetOptionValue(EnumOptions.RENDER_DISTANCE,
-                            !Keyboard.isKeyDown(Keyboard.KEY_LSHIFT) && !Keyboard.isKeyDown(Keyboard.KEY_RSHIFT) ? 1 : -1);
+                        options.RenderDistanceOption.Value = System.Math.Clamp(options.RenderDistanceOption.Value + (!Keyboard.isKeyDown(Keyboard.KEY_LSHIFT) && !Keyboard.isKeyDown(Keyboard.KEY_RSHIFT) ? 1.0f / 28.0f : -1.0f / 28.0f), 0.0f, 1.0f);
                     }
                 }
             }
@@ -1359,14 +1423,14 @@ public partial class Minecraft
 
         if (currentScreen == null)
         {
-            if (Mouse.isButtonDown(0) && (float)(ticksRan - mouseTicksRan) >= timer.ticksPerSecond / 4.0F &&
+            if (Mouse.isButtonDown(0) && (float)(ticksRan - mouseTicksRan) >= Timer.ticksPerSecond / 4.0F &&
                 inGameHasFocus)
             {
                 clickMouse(0);
                 mouseTicksRan = ticksRan;
             }
 
-            if (Mouse.isButtonDown(1) && (float)(ticksRan - mouseTicksRan) >= timer.ticksPerSecond / 4.0F &&
+            if (Mouse.isButtonDown(1) && (float)(ticksRan - mouseTicksRan) >= Timer.ticksPerSecond / 4.0F &&
                 inGameHasFocus)
             {
                 clickMouse(1);
@@ -1379,9 +1443,10 @@ public partial class Minecraft
 
     private void forceReload()
     {
-        Log.Info("FORCING RELOAD!");
+        _logger.LogInformation("FORCING RELOAD!");
         sndManager = new SoundManager();
         sndManager.LoadSoundSettings(options);
+        DefaultMusicCategories.Register(sndManager);
     }
 
     public bool isMultiplayerWorld()
@@ -1397,8 +1462,8 @@ public partial class Minecraft
 
     public void changeWorld(World newWorld, string loadingText = "", EntityPlayer targetEntity = null)
     {
-        statFileWriter.func_27175_b();
-        statFileWriter.syncStats();
+        statFileWriter.Tick();
+        statFileWriter.SyncStats();
         camera = null;
         loadingScreen.printText(loadingText);
         loadingScreen.progressStage("");
@@ -1466,8 +1531,8 @@ public partial class Minecraft
         Vec3i centerPos = world.getSpawnPos();
         if (player != null)
         {
-            centerPos.x = (int)player.x;
-            centerPos.z = (int)player.z;
+            centerPos.X = (int)player.x;
+            centerPos.Z = (int)player.z;
         }
 
         for (int xOffset = -loadingRadius; xOffset <= loadingRadius; xOffset += 16)
@@ -1475,7 +1540,7 @@ public partial class Minecraft
             for (int zOffset = -loadingRadius; zOffset <= loadingRadius; zOffset += 16)
             {
                 loadingScreen.setLoadingProgress(loadedChunkCount++ * 100 / totalChunksToLoad);
-                world.getBlockId(centerPos.x + xOffset, 64, centerPos.z + zOffset);
+                world.getBlockId(centerPos.X + xOffset, 64, centerPos.Z + zOffset);
 
                 while (world.doLightingUpdates())
                 {
@@ -1512,11 +1577,22 @@ public partial class Minecraft
         }
         else if (category.Equals("music", StringComparison.OrdinalIgnoreCase))
         {
-            sndManager.AddMusic(resourcePath, resourceFile);
+            sndManager.AddMusic(DefaultMusicCategories.Game, resourcePath, resourceFile);
         }
         else if (category.Equals("newmusic", StringComparison.OrdinalIgnoreCase))
         {
-            sndManager.AddMusic(resourcePath, resourceFile);
+            sndManager.AddMusic(DefaultMusicCategories.Game, resourcePath, resourceFile);
+        }
+        else if (category.Equals("custom", StringComparison.OrdinalIgnoreCase))
+        {
+            int subSlash = resourcePath.IndexOf("/");
+            string subCategory = resourcePath.Substring(0, subSlash);
+            resourcePath = resourcePath.Substring(subSlash + 1);
+
+            if (subCategory.Equals("music", StringComparison.OrdinalIgnoreCase))
+            {
+                sndManager.AddMusic(DefaultMusicCategories.Menu, resourcePath, resourceFile);
+            }
         }
     }
 
@@ -1537,32 +1613,33 @@ public partial class Minecraft
 
     public void respawn(bool ignoreSpawnPosition, int newDimensionId)
     {
-        Vec3i playerSpawnPos = null;
-        Vec3i respawnPos = null;
-        bool useBedSpawn = true;
-        if (player != null && !ignoreSpawnPosition)
+        Vec3i? playerSpawnPos = null;
+        Vec3i? respawnPos = null;
+
+        if (player is not null && !ignoreSpawnPosition)
         {
             playerSpawnPos = player.getSpawnPos();
-            if (playerSpawnPos != null)
+
+            if (playerSpawnPos is not null)
             {
                 respawnPos = EntityPlayer.findRespawnPosition(world, playerSpawnPos);
-                if (respawnPos == null)
+
+                if (respawnPos is null)
                 {
                     player.sendMessage("tile.bed.notValid");
                 }
             }
         }
 
-        if (respawnPos == null)
-        {
-            respawnPos = world.getSpawnPos();
-            useBedSpawn = false;
-        }
+        bool useBedSpawn = respawnPos is not null;
+        Vec3i finalRespawnPos = respawnPos ?? world.getSpawnPos();
 
         world.UpdateSpawnPosition();
         world.updateEntityLists();
+
         int previousPlayerId = 0;
-        if (player != null)
+
+        if (player is not null)
         {
             previousPlayerId = player.id;
             world.Remove(player);
@@ -1572,12 +1649,18 @@ public partial class Minecraft
         player = (ClientPlayerEntity)playerController.createPlayer(world);
         player.dimensionId = newDimensionId;
         camera = player;
+
         player.teleportToTop();
+
         if (useBedSpawn)
         {
             player.setSpawnPos(playerSpawnPos);
-            player.setPositionAndAnglesKeepPrevAngles((double)((float)respawnPos.x + 0.5F), (double)((float)respawnPos.y + 0.1F),
-                (double)((float)respawnPos.z + 0.5F), 0.0F, 0.0F);
+            player.setPositionAndAnglesKeepPrevAngles(
+                finalRespawnPos.X + 0.5,
+                finalRespawnPos.Y + 0.1,
+                finalRespawnPos.Z + 0.5,
+                0.0F,
+                0.0F);
         }
 
         playerController.flipPlayer(player);
@@ -1586,10 +1669,12 @@ public partial class Minecraft
         player.id = previousPlayerId;
         player.spawn();
         playerController.fillHotbar(player);
+
         showText("Respawning");
+
         if (currentScreen is GuiGameOver)
         {
-            displayGuiScreen((GuiScreen)null);
+            displayGuiScreen(null);
         }
     }
 
@@ -1597,7 +1682,7 @@ public partial class Minecraft
     {
         System.Threading.Thread.CurrentThread.Name = "Minecraft Main Thread";
 
-        Minecraft mc = new(1280, 720, false)
+        Minecraft mc = new(850, 480, false)
         {
             minecraftUri = "www.minecraft.net"
         };
@@ -1605,10 +1690,15 @@ public partial class Minecraft
         if (playerName != null && sessionToken != null)
         {
             mc.session = new Session(playerName, sessionToken);
+
+            if (sessionToken == "-")
+            {
+                hasPaidCheckTime = java.lang.System.currentTimeMillis();
+            }
         }
         else
         {
-            mc.session = new Session("Player" + java.lang.System.currentTimeMillis() % 1000L, "");
+            throw new Exception("Player name and session token were not provided!");
         }
 
         mc.Run();
@@ -1619,43 +1709,16 @@ public partial class Minecraft
         return player is EntityClientPlayerMP ? ((EntityClientPlayerMP)player).sendQueue : null;
     }
 
-    private static AppBuilder BuildAvaloniaApp()
-        => AppBuilder.Configure<App>()
-            .UsePlatformDetect()
-            .LogToTrace();
-
     public static void Startup(string[] args)
     {
-        bool valid = JarValidator.ValidateJar("b1.7.3.jar");
-        string playerName = null;
-        string sessionToken = null;
-        playerName = "Player" + java.lang.System.currentTimeMillis() % 1000L;
-        if (args.Length > 0)
+        (string Name, string Session) result = args.Length switch
         {
-            playerName = args[0];
-        }
+            0 => ($"Player{Random.Shared.Next()}", "-"),
+            1 => (args[0], "-"),
+            _ => (args[0], args[1])
+        };
 
-        sessionToken = "-";
-        if (args.Length > 1)
-        {
-            sessionToken = args[1];
-        }
-
-        if (!valid)
-        {
-            var app = BuildAvaloniaApp();
-
-            app.StartWithClassicDesktopLifetime(args, ShutdownMode.OnMainWindowClose);
-
-            if (LauncherWindow.Result != null && LauncherWindow.Result.Success)
-            {
-                StartMainThread(playerName, sessionToken);
-            }
-        }
-        else
-        {
-            StartMainThread(playerName, sessionToken);
-        }
+        StartMainThread(result.Name, result.Session);
     }
 
     public static bool isGuiEnabled()
@@ -1680,3 +1743,4 @@ public partial class Minecraft
 
     public static bool lineIsCommand(string var1) => (var1.StartsWith("/"));
 }
+

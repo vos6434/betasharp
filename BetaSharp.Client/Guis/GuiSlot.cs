@@ -53,7 +53,7 @@ public abstract class GuiSlot
 
     protected abstract void ElementClicked(int index, bool doubleClick);
 
-    protected abstract bool isSelected(int slotIndex);
+    protected abstract bool IsSelected(int slotIndex);
 
     protected virtual int GetContentHeight() => GetSize() * _posZ + _headerHeight;
 
@@ -63,7 +63,7 @@ public abstract class GuiSlot
 
     protected virtual void DrawHeader(int x, int y, Tessellator tess) { }
 
-    protected virtual void func_27255_a(int var1, int var2)
+    protected virtual void HeaderClicked(int var1, int var2)
     {
     }
 
@@ -146,7 +146,7 @@ public abstract class GuiSlot
                     }
                     else if (mouseX >= contentMinX && mouseX <= contentMaxX && relativeY < 0)
                     {
-                        func_27255_a(mouseX - contentMinX, mouseY - _top + (int)_amountScrolled - 4);
+                        HeaderClicked(mouseX - contentMinX, mouseY - _top + (int)_amountScrolled - 4);
                         shouldCaptureMouse = false;
                     }
 
@@ -188,7 +188,7 @@ public abstract class GuiSlot
         GLManager.GL.Disable(GLEnum.Fog);
         var tess = Tessellator.instance;
 
-        GLManager.GL.BindTexture(GLEnum.Texture2D, (uint)_mc.textureManager.GetTextureId("/gui/background.png"));
+        _mc.textureManager.BindTexture(_mc.textureManager.GetTextureId("/gui/background.png"));
         GLManager.GL.Color4(1.0f, 1.0f, 1.0f, 1.0f);
         const float textureScale = 32.0f;
 
@@ -215,7 +215,7 @@ public abstract class GuiSlot
 
             if (slotY > _bottom || slotY + slotHeight < _top) continue;
 
-            if (_showSelectionHighlight && isSelected(i))
+            if (_showSelectionHighlight && IsSelected(i))
             {
                 int minX = _width / 2 - 110;
                 int maxX = _width / 2 + 110;
@@ -318,9 +318,9 @@ public abstract class GuiSlot
     private void OverlayBackground(int startY, int endY, int alphaStart, int alphaEnd)
     {
         var tess = Tessellator.instance;
-        var textureId = (uint)_mc.textureManager.GetTextureId("/gui/background.png");
+        var textureId = (uint)_mc.textureManager.GetTextureId("/gui/background.png").Id;
 
-        GLManager.GL.BindTexture(GLEnum.Texture2D, textureId);
+        _mc.textureManager.BindTexture(_mc.textureManager.GetTextureId("/gui/background.png"));
         GLManager.GL.Color4(1.0f, 1.0f, 1.0f, 1.0f);
 
         const float textureScale = 32.0f;

@@ -1,4 +1,4 @@
-﻿using BetaSharp.Blocks.Entities;
+using BetaSharp.Blocks.Entities;
 using BetaSharp.Inventorys;
 using BetaSharp.Items;
 using BetaSharp.Network.Packets;
@@ -37,10 +37,10 @@ public class ServerPlayerEntity : EntityPlayer, ScreenHandlerListener
         interactionManager.player = this;
         this.interactionManager = interactionManager;
         Vec3i spawnPos = world.getSpawnPos();
-        int x = spawnPos.x;
-        int y = spawnPos.z;
-        int z = spawnPos.y;
-        if (!world.dimension.hasCeiling)
+        int x = spawnPos.X;
+        int y = spawnPos.Z;
+        int z = spawnPos.Y;
+        if (!world.dimension.HasCeiling)
         {
             x += random.NextInt(20) - 10;
             z = world.getSpawnPositionValidityY(x, y);
@@ -106,12 +106,6 @@ public class ServerPlayerEntity : EntityPlayer, ScreenHandlerListener
     public ItemStack getEquipment(int slot)
     {
         return slot == 0 ? inventory.getSelectedItem() : inventory.armor[slot - 1];
-    }
-
-
-    public override void onKilledBy(Entity adversary)
-    {
-        inventory.dropInventory();
     }
 
 
@@ -186,7 +180,7 @@ public class ServerPlayerEntity : EntityPlayer, ScreenHandlerListener
                     continue;
                 }
 
-                if (!world.chunkCache.GetChunk(chunkPos.x, chunkPos.z).terrainPopulated)
+                if (!world.chunkCache.GetChunk(chunkPos.x, chunkPos.z).TerrainPopulated)
                 {
                     continue;
                 }
@@ -497,15 +491,15 @@ public class ServerPlayerEntity : EntityPlayer, ScreenHandlerListener
     {
         if (stat != null)
         {
-            if (!stat.localOnly)
+            if (!stat.LocalOnly)
             {
                 while (amount > 100)
                 {
-                    networkHandler.sendPacket(new IncreaseStatS2CPacket(stat.id, 100));
+                    networkHandler.sendPacket(new IncreaseStatS2CPacket(stat.Id, 100));
                     amount -= 100;
                 }
 
-                networkHandler.sendPacket(new IncreaseStatS2CPacket(stat.id, amount));
+                networkHandler.sendPacket(new IncreaseStatS2CPacket(stat.Id, amount));
             }
         }
     }

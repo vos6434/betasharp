@@ -18,11 +18,14 @@ using BetaSharp.Worlds;
 using BetaSharp.Worlds.Chunks;
 using BetaSharp.Worlds.Storage;
 using java.net;
+using Microsoft.Extensions.Logging;
 
 namespace BetaSharp.Client.Network;
 
 public class ClientNetworkHandler : NetHandler
 {
+    private readonly ILogger<ClientNetworkHandler> _logger = Log.Instance.For<ClientNetworkHandler>();
+
     private bool disconnected;
     private readonly Connection netManager;
     public string field_1209_a;
@@ -61,7 +64,7 @@ public class ClientNetworkHandler : NetHandler
     public override void onHello(LoginHelloPacket packet)
     {
         mc.playerController = new PlayerControllerMP(mc, this);
-        mc.statFileWriter.readStat(Stats.Stats.joinMultiplayerStat, 1);
+        mc.statFileWriter.ReadStat(Stats.Stats.JoinMultiplayerStat, 1);
         worldClient = new ClientWorld(this, packet.worldSeed, packet.dimensionId)
         {
             isRemote = true
@@ -354,7 +357,7 @@ public class ClientNetworkHandler : NetHandler
             int blockX = positions >> 12 & 15;
             int blockZ = positions >> 8 & 15;
             int blockY = positions & 255;
-            chunk.setBlock(blockX, blockY, blockZ, blockRawId, metadata);
+            chunk.SetBlock(blockX, blockY, blockZ, blockRawId, metadata);
             worldClient.ClearBlockResets(blockX + x, blockY, blockZ + y, blockX + x, blockY, blockZ + y);
             worldClient.setBlocksDirty(blockX + x, blockY, blockZ + y, blockX + x, blockY, blockZ + y);
         }
@@ -517,7 +520,7 @@ public class ClientNetworkHandler : NetHandler
         double z = packet.zPosition / 32.0D;
         float yaw = packet.yaw * 360 / 256.0F;
         float pitch = packet.pitch * 360 / 256.0F;
-        EntityLiving ent = (EntityLiving)EntityRegistry.create(packet.type, mc.world);
+        EntityLiving ent = (EntityLiving)EntityRegistry.Create(packet.type, mc.world);
         ent.trackedPosX = packet.xPosition;
         ent.trackedPosY = packet.yPosition;
         ent.trackedPosZ = packet.zPosition;
@@ -776,7 +779,7 @@ public class ClientNetworkHandler : NetHandler
         }
         else
         {
-            Log.Info($"Unknown itemid: {packet.id}");
+            _logger.LogInformation($"Unknown itemid: {packet.id}");
         }
 
     }
@@ -788,7 +791,7 @@ public class ClientNetworkHandler : NetHandler
 
     public override void onIncreaseStat(IncreaseStatS2CPacket packet)
     {
-        ((EntityClientPlayerMP)mc.player).func_27027_b(Stats.Stats.getStatById(packet.statId), packet.amount);
+        ((EntityClientPlayerMP)mc.player).func_27027_b(Stats.Stats.GetStatById(packet.statId), packet.amount);
     }
 
     public override bool isServerSide()

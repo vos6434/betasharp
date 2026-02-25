@@ -16,108 +16,67 @@ using BetaSharp.Worlds.Dimensions;
 using BetaSharp.Worlds.Storage;
 using java.lang;
 using java.util;
+using Microsoft.Extensions.Logging;
 using Silk.NET.Maths;
+using Random = System.Random;
 
 namespace BetaSharp.Worlds;
 
 public abstract class World : java.lang.Object, BlockView
 {
-    public static readonly Class Class = ikvm.runtime.Util.getClassFromTypeHandle(typeof(World).TypeHandle);
     private const int AUTOSAVE_PERIOD = 40;
-    public bool instantBlockUpdateEnabled;
-    private readonly List<LightUpdate> lightingQueue;
-    public List<Entity> entities;
-    private readonly List<Entity> entitiesToUnload;
-    private readonly TreeSet scheduledUpdates;
-    private readonly Set scheduledUpdateSet;
-    public List<BlockEntity> blockEntities;
-    private readonly List<BlockEntity> blockEntityUpdateQueue;
-    public List<EntityPlayer> players;
-    public List globalEntities;
-    private readonly long worldTimeMask;
-    public int ambientDarkness;
-    protected int lcgBlockSeed;
-    protected readonly int lcgBlockSeedIncrement;
+    public bool instantBlockUpdateEnabled = false;
+    private readonly List<LightUpdate> lightingQueue = [];
+    private readonly ILogger<World> _logger = Log.Instance.For<World>();
+    public List<Entity> entities = [];
+    private readonly List<Entity> entitiesToUnload = [];
+    private readonly PriorityQueue<BlockUpdate, (long, long)> _scheduledUpdates = new();
+    private long _eventDeltaTime = 0; // difference between world time and the scheduled time of the block events so things don't break when using the time command
+    public List<BlockEntity> blockEntities = [];
+    private readonly List<BlockEntity> blockEntityUpdateQueue = [];
+    public List<EntityPlayer> players = [];
+    public List globalEntities = new ArrayList();
+    private readonly long worldTimeMask = 0xFFFFFFL;
+    public int ambientDarkness = 0;
+    protected int lcgBlockSeed = Random.Shared.Next();
     protected float prevRainingStrength;
     protected float rainingStrength;
     protected float prevThunderingStrength;
     protected float thunderingStrength;
-    protected int ticksSinceLightning;
-    public int lightningTicksLeft;
-    public bool pauseTicking;
-    private readonly long lockTimestamp;
-    protected int autosavePeriod;
+    protected int ticksSinceLightning = 0;
+    public int lightningTicksLeft = 0;
+    public bool pauseTicking = false;
+    protected int autosavePeriod = AUTOSAVE_PERIOD;
     public int difficulty;
-    public JavaRandom random;
+    public JavaRandom random = new();
     public bool isNewWorld;
     public readonly Dimension dimension;
-    protected List<IWorldAccess> eventListeners;
+    protected List<IWorldAccess> eventListeners = [];
     protected ChunkSource chunkSource;
-    protected readonly WorldStorage storage;
+    protected readonly IWorldStorage storage;
     protected WorldProperties properties;
     public bool eventProcessingEnabled;
     private bool allPlayersSleeping;
     public PersistentStateManager persistentStateManager;
-    private readonly List<Box> collidingBoundingBoxes;
+    private readonly List<Box> collidingBoundingBoxes = [];
     private bool processingDeferred;
-    private int lightingUpdatesCounter;
-    private bool spawnHostileMobs;
-    private bool spawnPeacefulMobs;
+    private int lightingUpdatesCounter = 0;
+    private bool spawnHostileMobs = true;
+    private bool spawnPeacefulMobs = true;
     private int lightingUpdatesScheduled;
-    private readonly HashSet<ChunkPos> activeChunks;
-    private int soundCounter;
-    private readonly List<Entity> tempEntityList;
-    public bool isRemote;
+    private readonly HashSet<ChunkPos> activeChunks = new();
+    private int soundCounter = Random.Shared.Next(12000);
+    private readonly List<Entity> tempEntityList = [];
+    public bool isRemote = false;
     public RuleSet Rules { get; protected set; }
 
-    public BiomeSource getBiomeSource()
+    public World(IWorldStorage var1, string var2, Dimension var3, long var4)
     {
-        return dimension.biomeSource;
-    }
-
-    public WorldStorage getWorldStorage()
-    {
-        return storage;
-    }
-
-
-    public World(WorldStorage var1, string var2, Dimension var3, long var4)
-    {
-        instantBlockUpdateEnabled = false;
-        lightingQueue = [];
-        entities = [];
-        entitiesToUnload = [];
-        scheduledUpdates = new TreeSet();
-        scheduledUpdateSet = new HashSet();
-        blockEntities = [];
-        blockEntityUpdateQueue = [];
-        players = [];
-        globalEntities = new ArrayList();
-        worldTimeMask = 0xFFFFFFL;
-        ambientDarkness = 0;
-        lcgBlockSeed = (new JavaRandom()).NextInt();
-        lcgBlockSeedIncrement = 1013904223;
-        ticksSinceLightning = 0;
-        lightningTicksLeft = 0;
-        pauseTicking = false;
-        lockTimestamp = java.lang.System.currentTimeMillis();
-        autosavePeriod = AUTOSAVE_PERIOD;
-        random = new();
-        isNewWorld = false;
-        eventListeners = [];
-        collidingBoundingBoxes = [];
-        lightingUpdatesCounter = 0;
-        spawnHostileMobs = true;
-        spawnPeacefulMobs = true;
-        activeChunks = new HashSet<ChunkPos>();
-        soundCounter = random.NextInt(12000);
-        tempEntityList = [];
-        isRemote = false;
         storage = var1;
+        persistentStateManager = new PersistentStateManager(var1);
         properties = new WorldProperties(var4, var2);
         dimension = var3;
-        persistentStateManager = new PersistentStateManager(var1);
-        var3.setWorld(this);
+        var3.SetWorld(this);
         chunkSource = CreateChunkCache();
         Rules = properties.RulesTag != null
             ? RuleSet.FromNBT(RuleRegistry.Instance, properties.RulesTag)
@@ -126,91 +85,11 @@ public abstract class World : java.lang.Object, BlockView
         prepareWeather();
     }
 
-    public World(World var1, Dimension var2)
+    public World(IWorldStorage var1, string var2, long var3, Dimension var5)
     {
-        instantBlockUpdateEnabled = false;
-        lightingQueue = [];
-        entities = [];
-        entitiesToUnload = [];
-        scheduledUpdates = new TreeSet();
-        scheduledUpdateSet = new HashSet();
-        blockEntities = [];
-        blockEntityUpdateQueue = [];
-        players = [];
-        globalEntities = new ArrayList();
-        worldTimeMask = 0xFFFFFFL;
-        ambientDarkness = 0;
-        lcgBlockSeed = (new JavaRandom()).NextInt();
-        lcgBlockSeedIncrement = 1013904223;
-        ticksSinceLightning = 0;
-        lightningTicksLeft = 0;
-        pauseTicking = false;
-        lockTimestamp = java.lang.System.currentTimeMillis();
-        autosavePeriod = AUTOSAVE_PERIOD;
-        random = new();
-        isNewWorld = false;
-        eventListeners = [];
-        collidingBoundingBoxes = [];
-        lightingUpdatesCounter = 0;
-        spawnHostileMobs = true;
-        spawnPeacefulMobs = true;
-        activeChunks = new HashSet<ChunkPos>();
-        soundCounter = random.NextInt(12000);
-        tempEntityList = [];
-        isRemote = false;
-        lockTimestamp = var1.lockTimestamp;
-        storage = var1.storage;
-        properties = new WorldProperties(var1.properties);
-        persistentStateManager = new PersistentStateManager(storage);
-        dimension = var2;
-        var2.setWorld(this);
-        chunkSource = CreateChunkCache();
-        Rules = properties.RulesTag != null
-            ? RuleSet.FromNBT(RuleRegistry.Instance, properties.RulesTag)
-            : new RuleSet(RuleRegistry.Instance);
-        updateSkyBrightness();
-        prepareWeather();
-    }
-
-    public World(WorldStorage var1, string var2, long var3) : this(var1, var2, var3, null)
-    {
-    }
-
-    public World(WorldStorage var1, string var2, long var3, Dimension var5)
-    {
-        instantBlockUpdateEnabled = false;
-        lightingQueue = [];
-        entities = [];
-        entitiesToUnload = [];
-        scheduledUpdates = new TreeSet();
-        scheduledUpdateSet = new HashSet();
-        blockEntities = [];
-        blockEntityUpdateQueue = [];
-        players = [];
-        globalEntities = new ArrayList();
-        worldTimeMask = 0xFFFFFFL;
-        ambientDarkness = 0;
-        lcgBlockSeed = (new JavaRandom()).NextInt();
-        lcgBlockSeedIncrement = 1013904223;
-        ticksSinceLightning = 0;
-        lightningTicksLeft = 0;
-        pauseTicking = false;
-        lockTimestamp = java.lang.System.currentTimeMillis();
-        autosavePeriod = AUTOSAVE_PERIOD;
-        random = new JavaRandom();
-        isNewWorld = false;
-        eventListeners = [];
-        collidingBoundingBoxes = [];
-        lightingUpdatesCounter = 0;
-        spawnHostileMobs = true;
-        spawnPeacefulMobs = true;
-        activeChunks = new HashSet<ChunkPos>();
-        soundCounter = random.NextInt(12000);
-        tempEntityList = [];
-        isRemote = false;
         storage = var1;
         persistentStateManager = new PersistentStateManager(var1);
-        properties = var1.loadProperties();
+        properties = var1.LoadProperties();
         isNewWorld = properties == null;
         if (var5 != null)
         {
@@ -218,11 +97,11 @@ public abstract class World : java.lang.Object, BlockView
         }
         else if (properties != null && properties.Dimension == -1)
         {
-            dimension = Dimension.fromId(-1);
+            dimension = Dimension.FromId(-1);
         }
         else
         {
-            dimension = Dimension.fromId(0);
+            dimension = Dimension.FromId(0);
         }
 
         bool var6 = false;
@@ -236,7 +115,7 @@ public abstract class World : java.lang.Object, BlockView
             properties.LevelName = var2;
         }
 
-        dimension.setWorld(this);
+        dimension.SetWorld(this);
         chunkSource = CreateChunkCache();
         Rules = properties.RulesTag != null
             ? RuleSet.FromNBT(RuleRegistry.Instance, properties.RulesTag)
@@ -251,6 +130,16 @@ public abstract class World : java.lang.Object, BlockView
         prepareWeather();
     }
 
+    public BiomeSource getBiomeSource()
+    {
+        return dimension.BiomeSource;
+    }
+
+    public IWorldStorage getWorldStorage()
+    {
+        return storage;
+    }
+
     protected abstract ChunkSource CreateChunkCache();
 
     protected void initializeSpawnPoint()
@@ -260,7 +149,7 @@ public abstract class World : java.lang.Object, BlockView
         byte var2 = 64;
 
         int var3;
-        for (var3 = 0; !dimension.isValidSpawnPoint(var1, var3); var3 += random.NextInt(64) - random.NextInt(64))
+        for (var3 = 0; !dimension.IsValidSpawnPoint(var1, var3); var3 += random.NextInt(64) - random.NextInt(64))
         {
             var1 += random.NextInt(64) - random.NextInt(64);
         }
@@ -324,7 +213,7 @@ public abstract class World : java.lang.Object, BlockView
 
     public void saveWithLoadingDisplay(bool saveEntities, LoadingDisplay loadingDisplay)
     {
-        if (chunkSource.canSave())
+        if (chunkSource.CanSave())
         {
             if (loadingDisplay != null)
             {
@@ -340,7 +229,7 @@ public abstract class World : java.lang.Object, BlockView
             }
 
             Profiler.Start("saveChunks");
-            chunkSource.save(saveEntities, loadingDisplay);
+            chunkSource.Save(saveEntities, loadingDisplay);
             Profiler.Stop("saveChunks");
         }
     }
@@ -355,17 +244,17 @@ public abstract class World : java.lang.Object, BlockView
         properties.RulesTag = new NBTTagCompound();
         Rules.WriteToNBT(properties.RulesTag);
 
-        storage.save(properties, players.Cast<EntityPlayer>().ToList());
+        storage.Save(properties, players.Cast<EntityPlayer>().ToList());
         Profiler.Stop("saveWorldInfoAndPlayer");
 
         Profiler.Start("saveAllData");
-        persistentStateManager.saveAllData();
+        persistentStateManager.SaveAllData();
         Profiler.Stop("saveAllData");
     }
 
     public bool attemptSaving(int i)
     {
-        if (!chunkSource.canSave())
+        if (!chunkSource.CanSave())
         {
             return true;
         }
@@ -376,13 +265,13 @@ public abstract class World : java.lang.Object, BlockView
                 save();
             }
 
-            return chunkSource.save(false, (LoadingDisplay)null);
+            return chunkSource.Save(false, (LoadingDisplay)null);
         }
     }
 
     public int getBlockId(int x, int y, int z)
     {
-        return x >= -32000000 && z >= -32000000 && x < 32000000 && z <= 32000000 ? (y < 0 ? 0 : (y >= 128 ? 0 : GetChunk(x >> 4, z >> 4).getBlockId(x & 15, y, z & 15))) : 0;
+        return x >= -32000000 && z >= -32000000 && x < 32000000 && z <= 32000000 ? (y < 0 ? 0 : (y >= 128 ? 0 : GetChunk(x >> 4, z >> 4).GetBlockId(x & 15, y, z & 15))) : 0;
     }
 
     public bool isAir(int x, int y, int z)
@@ -460,7 +349,7 @@ public abstract class World : java.lang.Object, BlockView
             else
             {
                 Chunk var6 = GetChunk(x >> 4, z >> 4);
-                return var6.setBlock(x & 15, y, z & 15, blockId, meta);
+                return var6.SetBlock(x & 15, y, z & 15, blockId, meta);
             }
         }
         else
@@ -484,7 +373,7 @@ public abstract class World : java.lang.Object, BlockView
             else
             {
                 Chunk var5 = GetChunk(x >> 4, z >> 4);
-                return var5.setBlock(x & 15, y, z & 15, blockId);
+                return var5.SetBlock(x & 15, y, z & 15, blockId);
             }
         }
         else
@@ -516,7 +405,7 @@ public abstract class World : java.lang.Object, BlockView
                 Chunk var4 = GetChunk(x >> 4, z >> 4);
                 x &= 15;
                 z &= 15;
-                return var4.getBlockMeta(x, y, z);
+                return var4.GetBlockMeta(x, y, z);
             }
         }
         else
@@ -559,7 +448,7 @@ public abstract class World : java.lang.Object, BlockView
                 Chunk var5 = GetChunk(x >> 4, z >> 4);
                 x &= 15;
                 z &= 15;
-                var5.setBlockMeta(x, y, z, meta);
+                var5.SetBlockMeta(x, y, z, meta);
                 return true;
             }
         }
@@ -663,7 +552,7 @@ public abstract class World : java.lang.Object, BlockView
 
     public bool hasSkyLight(int x, int y, int z)
     {
-        return GetChunk(x >> 4, z >> 4).isAboveMaxHeight(x & 15, y, z & 15);
+        return GetChunk(x >> 4, z >> 4).IsAboveMaxHeight(x & 15, y, z & 15);
     }
 
     public int getBrightness(int x, int y, int z)
@@ -679,7 +568,7 @@ public abstract class World : java.lang.Object, BlockView
                 y = 127;
             }
 
-            return GetChunk(x >> 4, z >> 4).getLight(x & 15, y, z & 15, 0);
+            return GetChunk(x >> 4, z >> 4).GetLight(x & 15, y, z & 15, 0);
         }
     }
 
@@ -740,7 +629,7 @@ public abstract class World : java.lang.Object, BlockView
                 Chunk var11 = GetChunk(x >> 4, z >> 4);
                 x &= 15;
                 z &= 15;
-                return var11.getLight(x, y, z, ambientDarkness);
+                return var11.GetLight(x, y, z, ambientDarkness);
             }
         }
         else
@@ -770,7 +659,7 @@ public abstract class World : java.lang.Object, BlockView
                 Chunk var4 = GetChunk(x >> 4, z >> 4);
                 x &= 15;
                 z &= 15;
-                return var4.isAboveMaxHeight(x, y, z);
+                return var4.IsAboveMaxHeight(x, y, z);
             }
         }
         else
@@ -790,7 +679,7 @@ public abstract class World : java.lang.Object, BlockView
             else
             {
                 Chunk var3 = GetChunk(x >> 4, z >> 4);
-                return var3.getHeight(x & 15, z & 15);
+                return var3.GetHeight(x & 15, z & 15);
             }
         }
         else
@@ -801,7 +690,7 @@ public abstract class World : java.lang.Object, BlockView
 
     public void updateLight(LightType lightType, int x, int y, int z, int l)
     {
-        if (!dimension.hasCeiling || lightType != LightType.Sky)
+        if (!dimension.HasCeiling || lightType != LightType.Sky)
         {
             if (isPosLoaded(x, y, z))
             {
@@ -853,7 +742,7 @@ public abstract class World : java.lang.Object, BlockView
             else
             {
                 Chunk var7 = GetChunk(var5, var6);
-                return var7.getLight(type, x & 15, y, z & 15);
+                return var7.GetLight(type, x & 15, y, z & 15);
             }
         }
         else
@@ -873,7 +762,7 @@ public abstract class World : java.lang.Object, BlockView
                     if (hasChunk(x >> 4, z >> 4))
                     {
                         Chunk var6 = GetChunk(x >> 4, z >> 4);
-                        var6.setLight(lightType, x & 15, y, z & 15, value);
+                        var6.SetLight(lightType, x & 15, y, z & 15, value);
 
                         for (int var7 = 0; var7 < eventListeners.Count; ++var7)
                         {
@@ -894,12 +783,12 @@ public abstract class World : java.lang.Object, BlockView
             var5 = blockLight;
         }
 
-        return dimension.lightLevelToLuminance[var5];
+        return dimension.LightLevelToLuminance[var5];
     }
 
     public float getLuminance(int x, int y, int z)
     {
-        return dimension.lightLevelToLuminance[getLightLevel(x, y, z)];
+        return dimension.LightLevelToLuminance[getLightLevel(x, y, z)];
     }
 
     public bool canMonsterSpawn()
@@ -935,7 +824,7 @@ public abstract class World : java.lang.Object, BlockView
                 if ((!bl2 || var13 == null || var13.getCollisionShape(this, var8, var9, var10) != null) && var11 > 0 && var13.hasCollision(var12, bl))
                 {
                     HitResult var14 = var13.raycast(this, var8, var9, var10, start, pos);
-                    if (var14 != null)
+                    if (var14.Type != HitResultType.MISS)
                     {
                         return var14;
                     }
@@ -947,12 +836,12 @@ public abstract class World : java.lang.Object, BlockView
                 {
                     if (java.lang.Double.isNaN(start.x) || java.lang.Double.isNaN(start.y) || java.lang.Double.isNaN(start.z))
                     {
-                        return null;
+                        return new HitResult(HitResultType.MISS);
                     }
 
                     if (var8 == var5 && var9 == var6 && var10 == var7)
                     {
-                        return null;
+                        return new HitResult(HitResultType.MISS);
                     }
 
                     bool var39 = true;
@@ -1097,23 +986,23 @@ public abstract class World : java.lang.Object, BlockView
                     if ((!bl2 || var37 == null || var37.getCollisionShape(this, var8, var9, var10) != null) && var35 > 0 && var37.hasCollision(var36, bl))
                     {
                         HitResult var38 = var37.raycast(this, var8, var9, var10, start, pos);
-                        if (var38 != null)
+                        if (var38.Type != HitResultType.MISS)
                         {
                             return var38;
                         }
                     }
                 }
 
-                return null;
+                return new HitResult(HitResultType.MISS);
             }
             else
             {
-                return null;
+                return new HitResult(HitResultType.MISS);
             }
         }
         else
         {
-            return null;
+            return new HitResult(HitResultType.MISS);
         }
     }
 
@@ -1182,7 +1071,7 @@ public abstract class World : java.lang.Object, BlockView
                 updateSleepingPlayers();
             }
 
-            GetChunk(var2, var3).addEntity(entity);
+            GetChunk(var2, var3).AddEntity(entity);
             entities.Add(entity);
             NotifyEntityAdded(entity);
             return true;
@@ -1241,7 +1130,7 @@ public abstract class World : java.lang.Object, BlockView
         int var3 = entity.chunkZ;
         if (entity.isPersistent && hasChunk(var2, var3))
         {
-            GetChunk(var2, var3).removeEntity(entity);
+            GetChunk(var2, var3).RemoveEntity(entity);
         }
 
         entities.Remove(entity);
@@ -1393,7 +1282,7 @@ public abstract class World : java.lang.Object, BlockView
 
     public float getTime(float var1)
     {
-        return dimension.getTimeOfDay(properties.WorldTime, var1);
+        return dimension.GetTimeOfDay(properties.WorldTime, var1);
     }
 
     public Vector3D<double> getCloudColor(float partialTicks)
@@ -1444,7 +1333,7 @@ public abstract class World : java.lang.Object, BlockView
     public Vector3D<double> getFogColor(float var1)
     {
         float var2 = getTime(var1);
-        return dimension.getFogColor(var2, var1);
+        return dimension.GetFogColor(var2, var1);
     }
 
     public int getTopSolidBlockY(int x, int z)
@@ -1455,7 +1344,7 @@ public abstract class World : java.lang.Object, BlockView
 
         for (z &= 15; var4 > 0; --var4)
         {
-            int var5 = var3.getBlockId(x, var4, z);
+            int var5 = var3.GetBlockId(x, var4, z);
             Material var6 = var5 == 0 ? Material.Air : Block.Blocks[var5].material;
             if (var6.BlocksMovement || var6.IsFluid)
             {
@@ -1491,7 +1380,7 @@ public abstract class World : java.lang.Object, BlockView
 
         for (int var7 = z & 15; var4 > 0; var4--)
         {
-            int var5 = var3.getBlockId(x, var4, var7);
+            int var5 = var3.GetBlockId(x, var4, var7);
             if (var5 != 0 && Block.Blocks[var5].material.BlocksMovement)
             {
                 return var4 + 1;
@@ -1501,38 +1390,29 @@ public abstract class World : java.lang.Object, BlockView
         return -1;
     }
 
-    public virtual void ScheduleBlockUpdate(int x, int y, int z, int id, int tickRate)
+    public virtual void ScheduleBlockUpdate(int x, int y, int z, int blockId, int tickRate)
     {
-        BlockEvent var6 = new(x, y, z, id);
         byte var7 = 8;
         if (instantBlockUpdateEnabled)
         {
-            if (isRegionLoaded(var6.x - var7, var6.y - var7, var6.z - var7, var6.x + var7, var6.y + var7, var6.z + var7))
+            if (isRegionLoaded(x - var7, y - var7, z - var7, x + var7, y + var7, z + var7))
             {
-                int var8 = getBlockId(var6.x, var6.y, var6.z);
-                if (var8 == var6.blockId && var8 > 0)
+                int var8 = getBlockId(x, y, z);
+                if (var8 == blockId && var8 > 0)
                 {
-                    Block.Blocks[var8].onTick(this, var6.x, var6.y, var6.z, random);
+                    Block.Blocks[var8].onTick(this, x, y, z, random);
                 }
             }
-
         }
         else
         {
             if (isRegionLoaded(x - var7, y - var7, z - var7, x + var7, y + var7, z + var7))
             {
-                if (id > 0)
-                {
-                    var6.setScheduledTime((long)tickRate + properties.WorldTime);
-                }
+                long scheduledTime = GetEventTime() + tickRate;
+                BlockUpdate blockUpdate = new(x, y, z, blockId, scheduledTime);
 
-                if (!scheduledUpdateSet.contains(var6))
-                {
-                    scheduledUpdateSet.add(var6);
-                    scheduledUpdates.add(var6);
-                }
+                _scheduledUpdates.Enqueue(blockUpdate, (blockUpdate.ScheduledTime, blockUpdate.ScheduledOrder));
             }
-
         }
     }
 
@@ -1569,7 +1449,7 @@ public abstract class World : java.lang.Object, BlockView
             var4 = var2.chunkZ;
             if (var2.isPersistent && hasChunk(var3, var4))
             {
-                GetChunk(var3, var4).removeEntity(var2);
+                GetChunk(var3, var4).RemoveEntity(var2);
             }
         }
 
@@ -1609,7 +1489,7 @@ public abstract class World : java.lang.Object, BlockView
                 var4 = var2.chunkZ;
                 if (var2.isPersistent && hasChunk(var3, var4))
                 {
-                    GetChunk(var3, var4).removeEntity(var2);
+                    GetChunk(var3, var4).RemoveEntity(var2);
                 }
 
                 entities.RemoveAt(var1--);
@@ -1635,7 +1515,7 @@ public abstract class World : java.lang.Object, BlockView
                 Chunk var7 = GetChunk(var5.x >> 4, var5.z >> 4);
                 if (var7 != null)
                 {
-                    var7.removeBlockEntityAt(var5.x & 15, var5.y, var5.z & 15);
+                    var7.RemoveBlockEntityAt(var5.x & 15, var5.y, var5.z & 15);
                 }
             }
         }
@@ -1654,7 +1534,7 @@ public abstract class World : java.lang.Object, BlockView
                     Chunk var9 = GetChunk(var8.x >> 4, var8.z >> 4);
                     if (var9 != null)
                     {
-                        var9.setBlockEntity(var8.x & 15, var8.y, var8.z & 15, var8);
+                        var9.SetBlockEntity(var8.x & 15, var8.y, var8.z & 15, var8);
                     }
                     blockUpdateEvent(var8.x, var8.y, var8.z);
                 }
@@ -1739,13 +1619,13 @@ public abstract class World : java.lang.Object, BlockView
             {
                 if (entity.isPersistent && hasChunk(entity.chunkX, entity.chunkZ))
                 {
-                    GetChunk(entity.chunkX, entity.chunkZ).removeEntity(entity, entity.chunkSlice);
+                    GetChunk(entity.chunkX, entity.chunkZ).RemoveEntity(entity, entity.chunkSlice);
                 }
 
                 if (hasChunk(var6, var8))
                 {
                     entity.isPersistent = true;
-                    GetChunk(var6, var8).addEntity(entity);
+                    GetChunk(var6, var8).AddEntity(entity);
                 }
                 else
                 {
@@ -2041,7 +1921,7 @@ public abstract class World : java.lang.Object, BlockView
                     double var14 = box.minX + (box.maxX - box.minX) * (double)var11;
                     double var16 = box.minY + (box.maxY - box.minY) * (double)var12;
                     double var18 = box.minZ + (box.maxZ - box.minZ) * (double)var13;
-                    if (raycast(new Vec3D(var14, var16, var18), vec) == null)
+                    if (raycast(new Vec3D(var14, var16, var18), vec).Type == HitResultType.MISS)
                     {
                         ++var9;
                     }
@@ -2106,13 +1986,13 @@ public abstract class World : java.lang.Object, BlockView
 
     public string getDebugInfo()
     {
-        return chunkSource.getDebugInfo();
+        return chunkSource.GetDebugInfo();
     }
 
     public BlockEntity getBlockEntity(int x, int y, int z)
     {
         Chunk var4 = GetChunk(x >> 4, z >> 4);
-        return var4 != null ? var4.getBlockEntity(x & 15, y, z & 15) : null;
+        return var4 != null ? var4.GetBlockEntity(x & 15, y, z & 15) : null;
     }
 
     public void setBlockEntity(int x, int y, int z, BlockEntity blockEntity)
@@ -2132,7 +2012,7 @@ public abstract class World : java.lang.Object, BlockView
                 Chunk var5 = GetChunk(x >> 4, z >> 4);
                 if (var5 != null)
                 {
-                    var5.setBlockEntity(x & 15, y, z & 15, blockEntity);
+                    var5.SetBlockEntity(x & 15, y, z & 15, blockEntity);
                 }
             }
         }
@@ -2156,7 +2036,7 @@ public abstract class World : java.lang.Object, BlockView
             Chunk var5 = GetChunk(x >> 4, z >> 4);
             if (var5 != null)
             {
-                var5.removeBlockEntityAt(x & 15, y, z & 15);
+                var5.RemoveBlockEntityAt(x & 15, y, z & 15);
             }
         }
 
@@ -2228,7 +2108,7 @@ public abstract class World : java.lang.Object, BlockView
 
     public void queueLightUpdate(LightType type, int minX, int minY, int minZ, int maxX, int maxY, int maxZ, bool bl)
     {
-        if (!dimension.hasCeiling || type != LightType.Sky)
+        if (!dimension.HasCeiling || type != LightType.Sky)
         {
             ++lightingUpdatesScheduled;
 
@@ -2243,7 +2123,7 @@ public abstract class World : java.lang.Object, BlockView
                 int var10 = (maxZ + minZ) / 2;
                 if (isPosLoaded(var9, 64, var10))
                 {
-                    if (GetChunkFromPos(var9, var10).isEmpty())
+                    if (GetChunkFromPos(var9, var10).IsEmpty())
                     {
                         return;
                     }
@@ -2274,7 +2154,7 @@ public abstract class World : java.lang.Object, BlockView
                     var12 = 1000000;
                     if (lightingQueue.Count > 1000000)
                     {
-                        Log.Info($"More than {var12} updates, aborting lighting updates");
+                        _logger.LogInformation($"More than {var12} updates, aborting lighting updates");
                         lightingQueue.Clear();
                     }
 
@@ -2314,7 +2194,7 @@ public abstract class World : java.lang.Object, BlockView
             bool var1 = false;
             if (spawnHostileMobs && difficulty >= 1)
             {
-                var1 = NaturalSpawner.spawnMonstersAndWakePlayers(this, players);
+                var1 = NaturalSpawner.SpawnMonstersAndWakePlayers(this, players);
             }
 
             if (!var1)
@@ -2325,10 +2205,10 @@ public abstract class World : java.lang.Object, BlockView
             }
         }
         Profiler.Start("performSpawning");
-        NaturalSpawner.performSpawning(this, spawnHostileMobs, spawnPeacefulMobs);
+        NaturalSpawner.DoSpawning(this, spawnHostileMobs, spawnPeacefulMobs);
         Profiler.Stop("performSpawning");
         Profiler.Start("unload100OldestChunks");
-        chunkSource.tick();
+        chunkSource.Tick();
         Profiler.Stop("unload100OldestChunks");
 
         Profiler.Start("updateSkylightSubtracted");
@@ -2374,7 +2254,7 @@ public abstract class World : java.lang.Object, BlockView
 
     protected virtual void UpdateWeatherCycles()
     {
-        if (!dimension.hasCeiling)
+        if (!dimension.HasCeiling)
         {
             if (ticksSinceLightning > 0)
             {
@@ -2519,7 +2399,7 @@ public abstract class World : java.lang.Object, BlockView
                 var7 = var6 & 15;
                 var8 = var6 >> 8 & 15;
                 var9 = var6 >> 16 & 127;
-                var10 = var14.getBlockId(var7, var9, var8);
+                var10 = var14.GetBlockId(var7, var9, var8);
                 var7 += var3;
                 var8 += var4;
                 if (var10 == 0 && getBrightness(var7, var9, var8) <= random.NextInt(8) && getBrightness(LightType.Sky, var7, var9, var8) <= 0)
@@ -2555,16 +2435,16 @@ public abstract class World : java.lang.Object, BlockView
                 var7 = var6 & 15;
                 var8 = var6 >> 8 & 15;
                 var9 = getTopSolidBlockY(var7 + var3, var8 + var4);
-                if (getBiomeSource().GetBiome(var7 + var3, var8 + var4).GetEnableSnow() && var9 >= 0 && var9 < 128 && var14.getLight(LightType.Block, var7, var9, var8) < 10)
+                if (getBiomeSource().GetBiome(var7 + var3, var8 + var4).GetEnableSnow() && var9 >= 0 && var9 < 128 && var14.GetLight(LightType.Block, var7, var9, var8) < 10)
                 {
-                    var10 = var14.getBlockId(var7, var9 - 1, var8);
-                    var15 = var14.getBlockId(var7, var9, var8);
+                    var10 = var14.GetBlockId(var7, var9 - 1, var8);
+                    var15 = var14.GetBlockId(var7, var9, var8);
                     if (isRaining() && var15 == 0 && Block.Snow.canPlaceAt(this, var7 + var3, var9, var8 + var4) && var10 != 0 && var10 != Block.Ice.id && Block.Blocks[var10].material.BlocksMovement)
                     {
                         setBlock(var7 + var3, var9, var8 + var4, Block.Snow.id);
                     }
 
-                    if (var10 == Block.Water.id && var14.getBlockMeta(var7, var9 - 1, var8) == 0)
+                    if (var10 == Block.Water.id && var14.GetBlockMeta(var7, var9 - 1, var8) == 0)
                     {
                         setBlock(var7 + var3, var9 - 1, var8 + var4, Block.Ice.id);
                     }
@@ -2578,7 +2458,7 @@ public abstract class World : java.lang.Object, BlockView
                 var8 = var7 & 15;
                 var9 = var7 >> 8 & 15;
                 var10 = var7 >> 16 & 127;
-                var15 = var14.blocks[var8 << 11 | var9 << 7 | var10] & 255;
+                var15 = var14.Blocks[var8 << 11 | var9 << 7 | var10] & 255;
                 if (Block.BlocksRandomTick[var15])
                 {
                     Block.Blocks[var15].onTick(this, var8 + var3, var10, var9 + var4, random);
@@ -2588,42 +2468,23 @@ public abstract class World : java.lang.Object, BlockView
 
     }
 
-    public virtual bool ProcessScheduledTicks(bool flush)
+    public virtual void ProcessScheduledTicks(bool flush)
     {
-        int var2 = scheduledUpdates.size();
-        if (var2 != scheduledUpdateSet.size())
+        for (int i = 0; i < 1000; ++i)
         {
-            throw new IllegalStateException("TickNextTick list out of synch");
-        }
-        else
-        {
-            if (var2 > 1000)
-            {
-                var2 = 1000;
-            }
+            if (_scheduledUpdates.Count == 0) break;
+            if (!flush && _scheduledUpdates.Peek().ScheduledTime > GetEventTime()) break;
+            var blockUpdate = _scheduledUpdates.Dequeue();
 
-            for (int var3 = 0; var3 < var2; ++var3)
+            byte var5 = 8;
+            if (isRegionLoaded(blockUpdate.X - var5, blockUpdate.Y - var5, blockUpdate.Z - var5, blockUpdate.X + var5, blockUpdate.Y + var5, blockUpdate.Z + var5))
             {
-                BlockEvent var4 = (BlockEvent)scheduledUpdates.first();
-                if (!flush && var4.ticks > properties.WorldTime)
+                int blockId = getBlockId(blockUpdate.X, blockUpdate.Y, blockUpdate.Z);
+                if (blockId == blockUpdate.BlockId && blockId > 0)
                 {
-                    break;
-                }
-
-                scheduledUpdates.remove(var4);
-                scheduledUpdateSet.remove(var4);
-                byte var5 = 8;
-                if (isRegionLoaded(var4.x - var5, var4.y - var5, var4.z - var5, var4.x + var5, var4.y + var5, var4.z + var5))
-                {
-                    int var6 = getBlockId(var4.x, var4.y, var4.z);
-                    if (var6 == var4.blockId && var6 > 0)
-                    {
-                        Block.Blocks[var6].onTick(this, var4.x, var4.y, var4.z, random);
-                    }
+                    Block.Blocks[blockId].onTick(this, blockUpdate.X, blockUpdate.Y, blockUpdate.Z, random);
                 }
             }
-
-            return scheduledUpdates.size() != 0;
         }
     }
 
@@ -2660,7 +2521,7 @@ public abstract class World : java.lang.Object, BlockView
             {
                 if (hasChunk(var7, var8))
                 {
-                    GetChunk(var7, var8).collectOtherEntities(entity, box, tempEntityList);
+                    GetChunk(var7, var8).CollectOtherEntities(entity, box, tempEntityList);
                 }
             }
         }
@@ -2668,13 +2529,13 @@ public abstract class World : java.lang.Object, BlockView
         return tempEntityList;
     }
 
-    public List<Entity> collectEntitiesByClass(Class clazz, Box box)
+    public List<T> CollectEntitiesOfType<T>(Box box) where T : Entity
     {
+        List<T> res = new();
         int var3 = MathHelper.Floor((box.minX - 2.0D) / 16.0D);
         int var4 = MathHelper.Floor((box.maxX + 2.0D) / 16.0D);
         int var5 = MathHelper.Floor((box.minZ - 2.0D) / 16.0D);
         int var6 = MathHelper.Floor((box.maxZ + 2.0D) / 16.0D);
-        List<Entity> var7 = new();
 
         for (int var8 = var3; var8 <= var4; ++var8)
         {
@@ -2682,12 +2543,12 @@ public abstract class World : java.lang.Object, BlockView
             {
                 if (hasChunk(var8, var9))
                 {
-                    GetChunk(var8, var9).collectEntitiesByClass(clazz, box, var7);
+                    GetChunk(var8, var9).CollectEntitiesOfType<T>(box, res);
                 }
             }
         }
 
-        return var7;
+        return res;
     }
 
     public List<Entity> getEntities()
@@ -2699,7 +2560,7 @@ public abstract class World : java.lang.Object, BlockView
     {
         if (isPosLoaded(x, y, z))
         {
-            GetChunkFromPos(x, z).markDirty();
+            GetChunkFromPos(x, z).MarkDirty();
         }
 
         for (int var5 = 0; var5 < eventListeners.Count; ++var5)
@@ -2709,20 +2570,16 @@ public abstract class World : java.lang.Object, BlockView
 
     }
 
-    public int countEntities(Class entityClass)
+    public int CountEntitiesOfType(Type type)
     {
-        int var2 = 0;
+        int res = 0;
 
-        for (int var3 = 0; var3 < entities.Count; ++var3)
+        foreach (var entity in entities)
         {
-            Entity var4 = entities[var3];
-            if (entityClass.isAssignableFrom(var4.getClass()))
-            {
-                ++var2;
-            }
+            if (type.IsInstanceOfType(entity)) res++;
         }
 
-        return var2;
+        return res;
     }
 
     public void addEntities(List<Entity> entities)
@@ -2743,7 +2600,7 @@ public abstract class World : java.lang.Object, BlockView
 
     public void tickChunks()
     {
-        while (chunkSource.tick())
+        while (chunkSource.Tick())
         {
         }
 
@@ -2920,7 +2777,7 @@ public abstract class World : java.lang.Object, BlockView
                     var20 = 16;
                 }
 
-                var12 = GetChunk(var15, var18).loadFromPacket(chunkData, var16, var13, var19, var17, var14, var20, var12);
+                var12 = GetChunk(var15, var18).LoadFromPacket(chunkData, var16, var13, var19, var17, var14, var20, var12);
                 setBlocksDirty(var15 * 16 + var16, var13, var18 * 16 + var19, var15 * 16 + var17, var14, var18 * 16 + var20);
             }
         }
@@ -2979,7 +2836,7 @@ public abstract class World : java.lang.Object, BlockView
                     var20 = 16;
                 }
 
-                var12 = GetChunk(var15, var18).toPacket(var7, var16, var13, var19, var17, var14, var20, var12);
+                var12 = GetChunk(var15, var18).ToPacket(var7, var16, var13, var19, var17, var14, var20, var12);
             }
         }
 
@@ -2988,7 +2845,7 @@ public abstract class World : java.lang.Object, BlockView
 
     public void checkSessionLock()
     {
-        storage.checkSessionLock();
+        storage.CheckSessionLock();
     }
 
     public void setTime(long time)
@@ -2998,15 +2855,8 @@ public abstract class World : java.lang.Object, BlockView
 
     public void synchronizeTimeAndUpdates(long time)
     {
-        long var3 = time - properties.WorldTime;
-
-        var iter = scheduledUpdateSet.iterator();
-        while (iter.hasNext())
-        {
-            var obj = (BlockEvent)iter.next();
-            obj.ticks += var3;
-        }
-
+        long deltaTime = time - properties.WorldTime;
+        _eventDeltaTime -= deltaTime;
         setTime(time);
     }
 
@@ -3020,6 +2870,11 @@ public abstract class World : java.lang.Object, BlockView
         return properties.WorldTime;
     }
 
+    private long GetEventTime()
+    {
+        return properties.WorldTime + _eventDeltaTime;
+    }
+
     public Vec3i getSpawnPos()
     {
         return new Vec3i(properties.SpawnX, properties.SpawnY, properties.SpawnZ);
@@ -3027,7 +2882,7 @@ public abstract class World : java.lang.Object, BlockView
 
     public void setSpawnPos(Vec3i pos)
     {
-        properties.SetSpawn(pos.x, pos.y, pos.z);
+        properties.SetSpawn(pos.X, pos.Y, pos.Z);
     }
 
     public void LoadChunksNearEntity(Entity entity)
@@ -3078,7 +2933,7 @@ public abstract class World : java.lang.Object, BlockView
             var4 = var2.chunkZ;
             if (var2.isPersistent && hasChunk(var3, var4))
             {
-                GetChunk(var3, var4).removeEntity(var2);
+                GetChunk(var3, var4).RemoveEntity(var2);
             }
         }
 
@@ -3109,7 +2964,7 @@ public abstract class World : java.lang.Object, BlockView
                 var4 = var2.chunkZ;
                 if (var2.isPersistent && hasChunk(var3, var4))
                 {
-                    GetChunk(var3, var4).removeEntity(var2);
+                    GetChunk(var3, var4).RemoveEntity(var2);
                 }
 
                 entities.RemoveAt(var1--);
@@ -3225,17 +3080,17 @@ public abstract class World : java.lang.Object, BlockView
 
     public void setState(string id, PersistentState state)
     {
-        persistentStateManager.setData(id, state);
+        persistentStateManager.SetData(id, state);
     }
 
-    public PersistentState getOrCreateState(Class @class, string id)
+    public PersistentState? getOrCreateState(Type t, string id)
     {
-        return persistentStateManager.loadData(@class, id);
+        return persistentStateManager.LoadData(t, id);
     }
 
     public int getIdCount(string id)
     {
-        return persistentStateManager.getUniqueDataId(id);
+        return persistentStateManager.GetUniqueDataId(id);
     }
 
     public void worldEvent(int @event, int x, int y, int z, int data)

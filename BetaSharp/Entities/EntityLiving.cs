@@ -5,13 +5,11 @@ using BetaSharp.NBT;
 using BetaSharp.Util.Hit;
 using BetaSharp.Util.Maths;
 using BetaSharp.Worlds;
-using java.lang;
 
 namespace BetaSharp.Entities;
 
-public abstract class EntityLiving : Entity
+public class EntityLiving : Entity
 {
-    public static readonly new Class Class = ikvm.runtime.Util.getClassFromTypeHandle(typeof(EntityLiving).TypeHandle);
     public int maxHealth = 20;
     public float limbSwingPhase;
     public float limbSwingScale;
@@ -44,7 +42,7 @@ public abstract class EntityLiving : Entity
     public float tilt;
     protected bool unused_flag;
     public int field_9326_T = -1;
-    public float field_9325_U = (float)(java.lang.Math.random() * (double)0.9F + (double)0.1F);
+    public float field_9325_U = Random.Shared.NextSingle() * 0.9f + 0.1f;
     public float lastWalkAnimationSpeed;
     public float walkAnimationSpeed;
     public float animationPhase;
@@ -68,11 +66,16 @@ public abstract class EntityLiving : Entity
     public EntityLiving(World world) : base(world)
     {
         preventEntitySpawning = true;
-        limbSwingScale = (float)(java.lang.Math.random() + 1.0D) * 0.01F;
+        limbSwingScale = (Random.Shared.NextSingle() + 1.0f) * 0.01f;
         setPosition(x, y, z);
-        limbSwingPhase = (float)java.lang.Math.random() * 12398.0F;
-        yaw = (float)(java.lang.Math.random() * (double)((float)System.Math.PI) * 2.0D);
+        limbSwingPhase = Random.Shared.NextSingle() * 12398.0f;
+        yaw = (Random.Shared.NextSingle() * (float)Math.PI) * 2.0f;
         stepHeight = 0.5F;
+    }
+
+    public virtual void PostSpawn()
+    {
+
     }
 
     protected override void initDataTracker()
@@ -81,7 +84,7 @@ public abstract class EntityLiving : Entity
 
     public bool canSee(Entity entity)
     {
-        return world.raycast(new Vec3D(x, y + (double)getEyeHeight(), z), new Vec3D(entity.x, entity.y + (double)entity.getEyeHeight(), entity.z)) == null;
+        return world.raycast(new Vec3D(x, y + (double)getEyeHeight(), z), new Vec3D(entity.x, entity.y + (double)entity.getEyeHeight(), entity.z)).Type == HitResultType.MISS;
     }
 
     public override string getTexture()
@@ -414,9 +417,9 @@ public abstract class EntityLiving : Entity
                         double var4 = entity.x - x;
 
                         double var6;
-                        for (var6 = entity.z - z; var4 * var4 + var6 * var6 < 1.0E-4D; var6 = (java.lang.Math.random() - java.lang.Math.random()) * 0.01D)
+                        for (var6 = entity.z - z; var4 * var4 + var6 * var6 < 1.0E-4D; var6 = (Random.Shared.NextDouble() - Random.Shared.NextDouble()) * 0.01D)
                         {
-                            var4 = (java.lang.Math.random() - java.lang.Math.random()) * 0.01D;
+                            var4 = (Random.Shared.NextDouble() - Random.Shared.NextDouble()) * 0.01D;
                         }
 
                         attackedAtYaw = (float)(System.Math.Atan2(var6, var4) * 180.0D / (double)((float)System.Math.PI)) - yaw;
@@ -424,7 +427,7 @@ public abstract class EntityLiving : Entity
                     }
                     else
                     {
-                        attackedAtYaw = (float)((int)(java.lang.Math.random() * 2.0D) * 180);
+                        attackedAtYaw = (float)((int)(Random.Shared.NextDouble() * 2.0D) * 180);
                     }
                 }
 

@@ -1,5 +1,6 @@
 using System.IO.Compression;
-using BetaSharp.Client.Rendering.Core;
+using BetaSharp.Client.Rendering.Core.Textures;
+using Microsoft.Extensions.Logging;
 using Silk.NET.OpenGL.Legacy;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
@@ -8,8 +9,9 @@ namespace BetaSharp.Client.Resource.Pack;
 
 public class ZippedTexturePack : TexturePack
 {
+    private readonly ILogger _logger = Log.Instance.For<ZippedTexturePack>();
     private ZipArchive? _texturePackZipFile;
-    private int _texturePackName = -1;
+    private TextureHandle? _texturePackName;
     private Image<Rgba32>? _texturePackThumbnail;
 
     private readonly FileInfo _texturePackFile;
@@ -53,16 +55,17 @@ public class ZippedTexturePack : TexturePack
         }
         catch (Exception ex)
         {
-            Log.Error(ex);
+            _logger.LogError(ex, "Failed to load zipped texture pack {File}", _texturePackFile.Name);
         }
     }
 
     public override void Unload(Minecraft mc)
     {
-        if (_texturePackThumbnail != null)
+        if (_texturePackThumbnail != null && _texturePackName != null)
         {
             mc.textureManager.Delete(_texturePackName);
             _texturePackThumbnail.Dispose();
+
         }
 
         CloseTexturePackFile();
@@ -70,18 +73,18 @@ public class ZippedTexturePack : TexturePack
 
     public override void BindThumbnailTexture(Minecraft mc)
     {
-        if (_texturePackThumbnail != null && _texturePackName < 0)
+        if (_texturePackThumbnail != null && _texturePackName == null)
         {
             _texturePackName = mc.textureManager.Load(_texturePackThumbnail);
         }
 
-        if (_texturePackThumbnail != null)
+        if (_texturePackThumbnail != null && _texturePackName != null)
         {
             mc.textureManager.BindTexture(_texturePackName);
         }
         else
         {
-            GLManager.GL.BindTexture(GLEnum.Texture2D, (uint)mc.textureManager.GetTextureId("/gui/unknown_pack.png"));
+            mc.textureManager.BindTexture(mc.textureManager.GetTextureId("/gui/unknown_pack.png"));
         }
 
     }
@@ -93,7 +96,10 @@ public class ZippedTexturePack : TexturePack
             // Opens the zip file and keeps it open for reading resources
             _texturePackZipFile = ZipFile.OpenRead(_texturePackFile.FullName);
         }
-        catch (Exception) { }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to open texture pack zip file {File}", _texturePackFile.Name);
+        }
     }
 
     public override void CloseTexturePackFile()
@@ -120,7 +126,10 @@ public class ZippedTexturePack : TexturePack
                 return ms;
             }
         }
-        catch (Exception) { }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get resource as stream for path {Path}", path);
+        }
 
         return base.GetResourceAsStream(path);
     }

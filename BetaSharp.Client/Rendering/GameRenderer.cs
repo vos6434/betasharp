@@ -73,9 +73,9 @@ public class GameRenderer
                 _client.objectMouseOver = _client.camera.rayTrace(var2, tickDelta);
                 double var4 = var2;
                 Vec3D var6 = _client.camera.getPosition(tickDelta);
-                if (_client.objectMouseOver != null)
+                if (_client.objectMouseOver.Type != HitResultType.MISS)
                 {
-                    var4 = _client.objectMouseOver.pos.distanceTo(var6);
+                    var4 = _client.objectMouseOver.Pos.distanceTo(var6);
                 }
 
                 if (var4 > 3.0D)
@@ -108,9 +108,9 @@ public class GameRenderer
                                 var11 = 0.0D;
                             }
                         }
-                        else if (var17 != null)
+                        else if (var17.Type != HitResultType.MISS)
                         {
-                            double var18 = var6.distanceTo(var17.pos);
+                            double var18 = var6.distanceTo(var17.Pos);
                             if (var18 < var11 || var11 == 0.0D)
                             {
                                 _targetedEntity = var14;
@@ -133,7 +133,7 @@ public class GameRenderer
 
     private void renderWorld(float tickDelta)
     {
-        _viewDistance = 256 >> _client.options.renderDistance;
+        _viewDistance = _client.options.renderDistance * 16.0f;
         GLManager.GL.MatrixMode(GLEnum.Projection);
         GLManager.GL.LoadIdentity();
 
@@ -341,7 +341,7 @@ public class GameRenderer
         GLManager.GL.Enable(GLEnum.CullFace);
         renderWorld(tickDelta);
         Frustum.Instance();
-        if (_client.options.renderDistance < 2)
+        if (_client.options.renderDistance >= 8)
         {
             applyFog(-1);
             var5.renderSky(tickDelta);
@@ -355,7 +355,7 @@ public class GameRenderer
 
         applyFog(0);
         GLManager.GL.Enable(GLEnum.Fog);
-        GLManager.GL.BindTexture(GLEnum.Texture2D, (uint)_client.textureManager.GetTextureId("/terrain.png"));
+        _client.textureManager.BindTexture(_client.textureManager.GetTextureId("/terrain.png"));
         Lighting.turnOff();
 
         Profiler.Start("sortAndRender");
@@ -379,7 +379,7 @@ public class GameRenderer
         Profiler.Stop("renderParticles");
 
         EntityPlayer var21;
-        if (_client.objectMouseOver != null && var4.isInFluid(Material.Water) && var4 is EntityPlayer)
+        if (_client.objectMouseOver.Type != HitResultType.MISS && var4.isInFluid(Material.Water) && var4 is EntityPlayer)
         {
             var21 = (EntityPlayer)var4;
             GLManager.GL.Disable(GLEnum.AlphaTest);
@@ -392,7 +392,7 @@ public class GameRenderer
         applyFog(0);
         GLManager.GL.Enable(GLEnum.Blend);
         GLManager.GL.Disable(GLEnum.CullFace);
-        GLManager.GL.BindTexture(GLEnum.Texture2D, (uint)_client.textureManager.GetTextureId("/terrain.png"));
+        _client.textureManager.BindTexture(_client.textureManager.GetTextureId("/terrain.png"));
 
         Profiler.Start("sortAndRender2");
 
@@ -407,7 +407,7 @@ public class GameRenderer
         GLManager.GL.DepthMask(true);
         GLManager.GL.Enable(GLEnum.CullFace);
         GLManager.GL.Disable(GLEnum.Blend);
-        if (cameraController.CameraZoom == 1.0D && var4 is EntityPlayer && _client.objectMouseOver != null && !var4.isInFluid(Material.Water))
+        if (cameraController.CameraZoom == 1.0D && var4 is EntityPlayer && _client.objectMouseOver.Type != HitResultType.MISS && !var4.isInFluid(Material.Water))
         {
             var21 = (EntityPlayer)var4;
             GLManager.GL.Disable(GLEnum.AlphaTest);
@@ -516,7 +516,7 @@ public class GameRenderer
             GLManager.GL.Enable(GLEnum.Blend);
             GLManager.GL.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
             GLManager.GL.AlphaFunc(GLEnum.Greater, 0.01F);
-            GLManager.GL.BindTexture(GLEnum.Texture2D, (uint)_client.textureManager.GetTextureId("/environment/snow.png"));
+            _client.textureManager.BindTexture(_client.textureManager.GetTextureId("/environment/snow.png"));
             double var9 = var3.lastTickX + (var3.x - var3.lastTickX) * (double)tickDelta;
             double var11 = var3.lastTickY + (var3.y - var3.lastTickY) * (double)tickDelta;
             double var13 = var3.lastTickZ + (var3.z - var3.lastTickZ) * (double)tickDelta;
@@ -594,7 +594,7 @@ public class GameRenderer
                 }
             }
 
-            GLManager.GL.BindTexture(GLEnum.Texture2D, (uint)_client.textureManager.GetTextureId("/environment/rain.png"));
+            _client.textureManager.BindTexture(_client.textureManager.GetTextureId("/environment/rain.png"));
             var16 = 10;
 
             var18 = 0;
@@ -668,7 +668,8 @@ public class GameRenderer
     {
         World var2 = _client.world;
         EntityLiving var3 = _client.camera;
-        float var4 = 1.0F / (4 - _client.options.renderDistance);
+        float var4 = 4.0F / _client.options.renderDistance;
+        var4 = System.Math.Clamp(var4, 0.25f, 1.0f);
         var4 = 1.0F - (float)java.lang.Math.pow((double)var4, 0.25D);
         Vector3D<double> var5 = var2.getSkyColor(_client.camera, tickDelta);
         float var6 = (float)var5.X;
@@ -774,7 +775,7 @@ public class GameRenderer
                 _client.terrainRenderer.chunkRenderer.SetFogEnd(_viewDistance * 0.8f);
             }
 
-            if (_client.world.dimension.isNether)
+            if (_client.world.dimension.IsNether)
             {
                 GLManager.GL.Fog(GLEnum.FogStart, 0.0F);
                 _client.terrainRenderer.chunkRenderer.SetFogStart(0.0f);

@@ -7,7 +7,6 @@ public class DynamicTexture : java.lang.Object
 {
     public byte[] pixels = new byte[1024];
     public int sprite;
-    public bool anaglyphEnabled = false;
     public int copyTo = 0;
     public int replicate = 1;
     public FXImage atlas = FXImage.Terrain;
@@ -23,21 +22,11 @@ public class DynamicTexture : java.lang.Object
         sprite = iconIdx;
     }
 
-    public virtual void tick()
+    public virtual void Setup(Minecraft mc)
     {
     }
 
-    public void bind(TextureManager var1)
+    public virtual void tick()
     {
-        if (atlas == FXImage.Terrain)
-        {
-            GLManager.GL.BindTexture(GLEnum.Texture2D, (uint)var1.GetTextureId("/terrain.png"));
-        }
-        else if (atlas == FXImage.Items)
-        {
-            GLManager.GL.BindTexture(GLEnum.Texture2D, (uint)var1.GetTextureId("/gui/items.png"));
-
-        }
-
     }
 }

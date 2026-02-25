@@ -1,4 +1,5 @@
 using BetaSharp.Blocks;
+using BetaSharp.Util.Maths;
 
 namespace BetaSharp.Client.Textures;
 
@@ -53,7 +54,7 @@ public class WaterSideSprite : DynamicTexture
                 }
 
                 heatDelta[var1 + var2 * 16] -= 0.3F;
-                if (java.lang.Math.random() < 0.2D)
+                if (Random.Shared.NextDouble() < 0.2D)
                 {
                     heatDelta[var1 + var2 * 16] = 0.5F;
                 }
@@ -80,16 +81,6 @@ public class WaterSideSprite : DynamicTexture
             var6 = (int)(50.0F + var13 * 64.0F);
             int var7 = 255;
             int var8 = (int)(146.0F + var13 * 50.0F);
-            if (anaglyphEnabled)
-            {
-                int var9 = (var5 * 30 + var6 * 59 + var7 * 11) / 100;
-                int var10 = (var5 * 30 + var6 * 70) / 100;
-                int var11 = (var5 * 30 + var7 * 70) / 100;
-                var5 = var9;
-                var6 = var10;
-                var7 = var11;
-            }
-
             pixels[var2 * 4 + 0] = (byte)var5;
             pixels[var2 * 4 + 1] = (byte)var6;
             pixels[var2 * 4 + 2] = (byte)var7;

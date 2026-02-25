@@ -6,6 +6,7 @@ namespace BetaSharp.Worlds.Chunks.Light;
 public struct LightUpdate
 {
     public readonly LightType lightType;
+
     public int minX;
     public int minY;
     public int minZ;
@@ -32,7 +33,7 @@ public struct LightUpdate
         int var5 = var2 * var3 * var4;
         if (var5 > -Short.MIN_VALUE)
         {
-            Log.Info("Light too large, skipping!");
+            // _logger.LogInformation("Light too large, skipping!");
         }
         else
         {
@@ -58,7 +59,7 @@ public struct LightUpdate
                         if (var14)
                         {
                             Chunk var15 = world.GetChunk(var10 >> 4, var11 >> 4);
-                            if (var15.isEmpty())
+                            if (var15.IsEmpty())
                             {
                                 var14 = false;
                             }

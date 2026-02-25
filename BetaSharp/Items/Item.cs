@@ -5,15 +5,17 @@ using BetaSharp.Stats;
 using BetaSharp.Worlds;
 using BetaSharp.Util.Maths;
 using java.lang;
+using Microsoft.Extensions.Logging;
 
 namespace BetaSharp.Items;
 
 public class Item : java.lang.Object
 {
+    private readonly ILogger<Item> _logger = Log.Instance.For<Item>();
 
     static Item()
     {
-        Stats.Stats.initializeExtendedItemStats();
+        Stats.Stats.InitializeExtendedItemStats();
     }
 
     protected static JavaRandom itemRand = new();
@@ -138,7 +140,7 @@ public class Item : java.lang.Object
         this.id = 256 + id;
         if (ITEMS[256 + id] != null)
         {
-            Log.Info($"CONFLICT @ {id}");
+            _logger.LogInformation($"CONFLICT @ {id}");
         }
 
         ITEMS[256 + id] = this;
@@ -305,7 +307,7 @@ public class Item : java.lang.Object
 
     public string getStatName()
     {
-        return StatCollector.translateToLocal(getItemName() + ".name");
+        return StatCollector.TranslateToLocal(getItemName() + ".name");
     }
 
     public virtual int getColorMultiplier(int color)

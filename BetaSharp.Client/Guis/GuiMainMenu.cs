@@ -1,7 +1,6 @@
 using BetaSharp.Client.Rendering.Core;
 using BetaSharp.Util.Maths;
 using java.io;
-using java.util;
 using Silk.NET.OpenGL.Legacy;
 
 namespace BetaSharp.Client.Guis;
@@ -52,6 +51,7 @@ public class GuiMainMenu : GuiScreen
 
     public override void UpdateScreen()
     {
+        
     }
 
     protected override void KeyTyped(char eventChar, int eventKey)
@@ -89,7 +89,7 @@ public class GuiMainMenu : GuiScreen
                 translator.TranslateKey("menu.quit")));
         }
 
-        if (mc.session == null)
+        if (mc.session == null || mc.session.sessionId == "-")
         {
             _multiplayerButton.Enabled = false;
         }
@@ -127,7 +127,7 @@ public class GuiMainMenu : GuiScreen
         short logoWidth = 274;
         int logoX = Width / 2 - logoWidth / 2;
         byte logoY = 30;
-        GLManager.GL.BindTexture(GLEnum.Texture2D, (uint)mc.textureManager.GetTextureId("/title/mclogo.png"));
+        mc.textureManager.BindTexture(mc.textureManager.GetTextureId("/title/mclogo.png"));
         GLManager.GL.Color4(1.0F, 1.0F, 1.0F, 1.0F);
         DrawTexturedModalRect(logoX + 0, logoY + 0, 0, 0, 155, 44);
         DrawTexturedModalRect(logoX + 155, logoY + 0, 0, 45, 155, 44);

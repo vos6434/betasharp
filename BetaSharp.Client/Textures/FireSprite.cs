@@ -1,15 +1,21 @@
 using BetaSharp.Blocks;
+using BetaSharp.Util.Maths;
 
 namespace BetaSharp.Client.Textures;
 
 public class FireSprite : DynamicTexture
 {
-
     protected float[] current = new float[320];
     protected float[] next = new float[320];
 
     public FireSprite(int var1) : base(Block.Fire.textureId + var1 * 16)
     {
+    }
+
+    public override void Setup(Minecraft mc)
+    {
+        Array.Clear(current);
+        Array.Clear(next);
     }
 
     public override void tick()
@@ -41,7 +47,7 @@ public class FireSprite : DynamicTexture
                 next[var1 + var2 * 16] = var4 / (var3 * 1.06F);
                 if (var2 >= 19)
                 {
-                    next[var1 + var2 * 16] = (float)(java.lang.Math.random() * java.lang.Math.random() * java.lang.Math.random() * 4.0D + java.lang.Math.random() * (double)0.1F + (double)0.2F);
+                    next[var1 + var2 * 16] = (float)(Random.Shared.NextDouble() * Random.Shared.NextDouble() * Random.Shared.NextDouble() * 4.0D + Random.Shared.NextDouble() * (double)0.1F + (double)0.2F);
                 }
             }
         }
@@ -71,21 +77,10 @@ public class FireSprite : DynamicTexture
             }
 
             var4 = (var13 - 0.5F) * 2.0F;
-            if (anaglyphEnabled)
-            {
-                int var9 = (var5 * 30 + var6 * 59 + var7 * 11) / 100;
-                int var10 = (var5 * 30 + var6 * 70) / 100;
-                int var11 = (var5 * 30 + var7 * 70) / 100;
-                var5 = var9;
-                var6 = var10;
-                var7 = var11;
-            }
-
             pixels[var2 * 4 + 0] = (byte)var5;
             pixels[var2 * 4 + 1] = (byte)var6;
             pixels[var2 * 4 + 2] = (byte)var7;
             pixels[var2 * 4 + 3] = (byte)var8;
         }
-
     }
 }
