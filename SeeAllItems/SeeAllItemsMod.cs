@@ -1,4 +1,6 @@
 using BetaSharp.Modding;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace SeeAllItems;
 
@@ -7,9 +9,20 @@ public class SeeAllItemsMod : ModBase
     private SeeAllItemsClient? _clientImpl;
     private SeeAllItemsServer? _serverImpl;
 
-    public override string Name => "See All Items";
-    public override string Description => "Client+Server support for SeeAllItems overlay.";
-    public override string Author => "autogen";
+    public SeeAllItemsMod()
+    {
+        Name = "See All Items";
+        Description = "Client+Server support for SeeAllItems overlay.";
+        Author = "autogen";
+        Version = "1.0.0";
+        Logger = NullLogger.Instance;
+    }
+
+    // Backwards-compatible constructor used by the mod loader when it expects a parameterized ctor.
+    public SeeAllItemsMod(string name, string author, string description, string version, ILogger logger)
+        : base(name, author, description, version, logger)
+    {
+    }
     public override bool HasOptionsMenu => false;
 
     public override void Initialize(Side side)

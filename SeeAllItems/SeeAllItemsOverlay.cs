@@ -42,8 +42,8 @@ internal class SeeAllItemsOverlay
     private bool showIds = true;
     // hide "hidden" subtypes when false
     private bool showHiddenItems = false;
-    // runtime-generated custom button texture id (if created)
-    private int customButtonTextureId = -1;
+    // runtime-generated custom button texture handle (if created)
+    private BetaSharp.Client.Rendering.Core.Textures.TextureHandle? customButtonTextureHandle = null;
     // height of the loaded custom button texture (used to select v offsets)
     private int customButtonTextureHeight = 0;
     private int customButtonTextureWidth = 0;
@@ -174,7 +174,7 @@ internal class SeeAllItemsOverlay
                         var imgRes = Image.Load<Rgba32>(s);
                         customButtonTextureHeight = imgRes.Height;
                         customButtonTextureWidth = imgRes.Width;
-                        customButtonTextureId = mc.textureManager.Load(imgRes);
+                        customButtonTextureHandle = mc.textureManager.Load(imgRes);
                         
                     }
                 }
@@ -184,27 +184,27 @@ internal class SeeAllItemsOverlay
             }
 
             // if not loaded from assembly, only try the mod file path (no other fallbacks)
-            if (customButtonTextureId < 0)
+                if (customButtonTextureHandle == null)
             {
                 if (File.Exists(outPath))
                 {
                     var img = Image.Load<Rgba32>(outPath);
                     customButtonTextureHeight = img.Height;
                     customButtonTextureWidth = img.Width;
-                    customButtonTextureId = mc.textureManager.Load(img);
+                    customButtonTextureHandle = mc.textureManager.Load(img);
                     
                 }
                 else
                 {
                     
-                    customButtonTextureId = -1;
+                    customButtonTextureHandle = null;
                 }
             }
         }
         catch (Exception ex)
         {
             
-            customButtonTextureId = -1;
+            customButtonTextureHandle = null;
         }
     }
 
@@ -566,13 +566,13 @@ internal class SeeAllItemsOverlay
         // draw using the game's button texture from /gui/gui.png to match vanilla
         try
         {
-            if (customButtonTextureId >= 0)
+            if (customButtonTextureHandle != null)
             {
-                GLManager.GL.BindTexture(GLEnum.Texture2D, (uint)customButtonTextureId);
+                mc.textureManager.BindTexture(customButtonTextureHandle);
             }
             else
             {
-                GLManager.GL.BindTexture(GLEnum.Texture2D, (uint)mc.textureManager.GetTextureId("/gui/gui.png"));
+                mc.textureManager.BindTexture(mc.textureManager.GetTextureId("/gui/gui.png"));
             }
             GLManager.GL.Color4(1.0F, 1.0F, 1.0F, 1.0F);
 
@@ -587,7 +587,7 @@ internal class SeeAllItemsOverlay
             int v;
             // Only use our custom texture (no vanilla fallback). If custom texture is large (>=200h) assume vanilla layout rows at 66/86,
             // otherwise treat as compact where top row=normal and second row=hover.
-            if (customButtonTextureId >= 0 && customButtonTextureHeight > 0)
+            if (customButtonTextureHandle != null && customButtonTextureHeight > 0)
             {
                 if (customButtonTextureHeight >= 200)
                 {
@@ -612,7 +612,7 @@ internal class SeeAllItemsOverlay
             try {  } catch { }
 
             // If we have a custom texture, compute UVs using its real dimensions
-            if (customButtonTextureId >= 0 && customButtonTextureWidth > 0 && customButtonTextureHeight > 0)
+            if (customButtonTextureHandle != null && customButtonTextureWidth > 0 && customButtonTextureHeight > 0)
             {
                 // normalized UV scale
                 float fU = 1.0f / customButtonTextureWidth;
@@ -1006,7 +1006,7 @@ internal class SeeAllItemsOverlay
 
         protected override void ElementClicked(int index, bool doubleClick) { }
 
-        protected override bool isSelected(int slotIndex) => false;
+        protected override bool IsSelected(int slotIndex) => false;
 
         protected override void DrawBackground() { }
 

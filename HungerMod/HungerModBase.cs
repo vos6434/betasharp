@@ -15,6 +15,7 @@ using BetaSharp.NBT;
 using BetaSharp.Worlds;
 using MonoMod.RuntimeDetour;
 using Silk.NET.OpenGL.Legacy;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace HungerMod;
@@ -80,6 +81,12 @@ public class HungerModBase : ModBase
         Author = "vos6434";
         Version = "1.0.0";
         Logger = NullLogger.Instance;
+    }
+
+    // Backwards-compatible constructor used by the mod loader when it expects a parameterized ctor.
+    public HungerModBase(string name, string author, string description, string version, ILogger logger)
+        : base(name, author, description, version, logger)
+    {
     }
 
     public override bool HasOptionsMenu => true;
@@ -549,7 +556,7 @@ public class HungerModBase : ModBase
         }
 
         GLManager.GL.Color4(1.0F, 1.0F, 1.0F, 1.0F);
-        GLManager.GL.BindTexture(GLEnum.Texture2D, (uint)mc.textureManager.GetTextureId("/gui/icons.png"));
+        mc.textureManager.BindTexture(mc.textureManager.GetTextureId("/gui/icons.png"));
 
         for (int i = 0; i < extraHearts; i++)
         {
