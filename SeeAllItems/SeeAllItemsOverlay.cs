@@ -105,7 +105,7 @@ internal class SeeAllItemsOverlay
                             // hide extra variants for these blocks when hidden-items is disabled
                             if (i == 63 && meta != 0) continue; // id 63
                             if (i == 68 && meta != 0) continue; // id 68
-                            if (i == 7 && meta != 0) continue;                   // coal (id 7)
+                            if ((i == 7 || i == 263) && meta != 0) continue;                   // coal (id 7 / id 263)
                         }
 
                         // create temp stack and validate it reports a display name and a numeric id
