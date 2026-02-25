@@ -66,7 +66,7 @@ internal class SeeAllItemsOverlay
             var it = Item.ITEMS[i];
             if (it == null) continue;
             // hide these block IDs only when hidden-items is disabled
-            if (!showHiddenItems && (i == 63 || i == 68)) continue;
+            if (!showHiddenItems && (i == 63 || i == 64 || i == 68 || i == 71 || i == 74 || i == 75 || i == 9 || i == 11)) continue;
             // If the item has subtypes (metadata variants) add a representative stack for each
             if (it.getHasSubtypes())
             {
@@ -81,7 +81,13 @@ internal class SeeAllItemsOverlay
                         {
                             // completely hide these block IDs (including base variant)
                             if (i == 63) continue; // id 63
+                            if (i == 64) continue; // id 64
                             if (i == 68) continue; // id 68
+                            if (i == 71) continue; // id 71
+                            if (i == 74) continue; // id 74
+                            if (i == 75) continue; // id 75
+                            if (i == 9) continue;  // id 9
+                            if (i == 11) continue; // id 11
 
                             if (meta == 0)
                             {
@@ -104,7 +110,13 @@ internal class SeeAllItemsOverlay
                             if (i == 44 && !(meta == 1 || meta == 2 || meta == 3)) continue; // id 44
                             // hide extra variants for these blocks when hidden-items is disabled
                             if (i == 63 && meta != 0) continue; // id 63
+                            if (i == 64 && meta != 0) continue; // id 64
                             if (i == 68 && meta != 0) continue; // id 68
+                            if (i == 71 && meta != 0) continue; // id 71
+                            if (i == 74 && meta != 0) continue; // id 74
+                            if (i == 75 && meta != 0) continue; // id 75
+                            if (i == 9 && meta != 0) continue;  // id 9
+                            if (i == 11 && meta != 0) continue; // id 11
                             if ((i == 7 || i == 263) && meta != 0) continue;                   // coal (id 7 / id 263)
                         }
 
