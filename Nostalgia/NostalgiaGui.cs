@@ -14,6 +14,12 @@ namespace Nostalgia;
 
 public class NostalgiaGui : GuiContainer
 {
+        private BetaSharp.Client.Guis.GuiTextField? _searchField;
+        private int searchX = 0;
+        private int searchY = 0;
+        private int searchW = 0;
+        private int searchH = 0;
+
     private const int TextureCanvas = 256;
 
     public NostalgiaGui() : base(CreateScreenHandler())
@@ -53,6 +59,68 @@ public class NostalgiaGui : GuiContainer
 
         _controlList.Add(new NostalgiaIconButton(1000, x0, y0, iconW, iconH, srcU0, srcV0, 10, 10));
         _controlList.Add(new NostalgiaIconButton(1001, x1, y1, iconW, iconH, srcU1, srcV1, 10, 10));
+
+        // Initialize the search input field positioned over the black bar in the overlay.
+        // Position it to the right of the title text and left of the top-right icons so it matches artwork.
+        string title = "Terminal";
+        int titleWidth = FontRenderer.GetStringWidth(title);
+        int leftInset = 8;
+        int sfX = guiLeft + leftInset + titleWidth + 39; // small gap after title (+3px nudge)
+        int iconLeft = guiLeft + 170; // left edge of the red-square / icon area
+        int sfW = Math.Max(80, iconLeft - sfX - 6);
+        int sfY = guiTop + 4; // align with top title baseline
+        int sfH = 12;
+
+        searchX = sfX; searchY = sfY; searchW = sfW; searchH = sfH;
+
+        if (_searchField == null)
+        {
+            _searchField = new BetaSharp.Client.Guis.GuiTextField(this, FontRenderer, sfX, sfY, sfW, sfH, "");
+        }
+        else
+        {
+            // update existing field's private size/pos to follow GUI layout (in case of re-init)
+            try
+            {
+                var t = typeof(BetaSharp.Client.Guis.GuiTextField);
+                var fx = t.GetField("_xPos", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                var fy = t.GetField("_yPos", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                var fw = t.GetField("_width", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                var fh = t.GetField("_height", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                if (fx != null) fx.SetValue(_searchField, sfX);
+                if (fy != null) fy.SetValue(_searchField, sfY);
+                if (fw != null) fw.SetValue(_searchField, sfW);
+                if (fh != null) fh.SetValue(_searchField, sfH);
+            }
+            catch { }
+        }
+        try { System.Console.WriteLine($"NostalgiaGui.InitGui: sfX={sfX} sfY={sfY} sfW={sfW} sfH={sfH}"); } catch { }
+    }
+
+    protected override void KeyTyped(char eventChar, int eventKey)
+    {
+        // give the search field first shot at keyboard input when focused
+        try
+        {
+            if (_searchField != null && _searchField.IsFocused)
+            {
+                _searchField.textboxKeyTyped(eventChar, eventKey);
+                return;
+            }
+        }
+        catch { }
+
+        base.KeyTyped(eventChar, eventKey);
+    }
+
+    protected override void MouseClicked(int x, int y, int button)
+    {
+        base.MouseClicked(x, y, button);
+        try
+        {
+            _searchField?.MouseClicked(x, y, button);
+        }
+        catch { }
     }
 
     protected override void ActionPerformed(BetaSharp.Client.Guis.GuiButton button)
@@ -136,6 +204,54 @@ public class NostalgiaGui : GuiContainer
             }
             // (no diagnostic logs)
 
+            // Draw the search field (use the game's GuiTextField so it matches vanilla appearance)
+            if (_searchField != null)
+            {
+                try { _searchField.updateCursorCounter(); } catch { }
+
+                // ensure the GuiTextField's internal position/size remains synced (handle resize/scale)
+                try
+                {
+                    var t = typeof(BetaSharp.Client.Guis.GuiTextField);
+                    var fx = t.GetField("_xPos", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                    var fy = t.GetField("_yPos", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                    var fw = t.GetField("_width", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                    var fh = t.GetField("_height", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                    if (fx != null) fx.SetValue(_searchField, searchX);
+                    if (fy != null) fy.SetValue(_searchField, searchY);
+                    if (fw != null) fw.SetValue(_searchField, searchW);
+                    if (fh != null) fh.SetValue(_searchField, searchH);
+                    try
+                    {
+                        var actualX = fx != null ? (int)fx.GetValue(_searchField) : -1;
+                        System.Console.WriteLine($"NostalgiaGui.DrawBg: sync searchX={searchX} actualInternalX={actualX}");
+                    }
+                    catch { }
+                }
+                catch { }
+
+                try
+                {
+                    GLManager.GL.Disable(Silk.NET.OpenGL.Legacy.GLEnum.Lighting);
+                    GLManager.GL.Disable(Silk.NET.OpenGL.Legacy.GLEnum.DepthTest);
+                    GLManager.GL.Enable(Silk.NET.OpenGL.Legacy.GLEnum.Texture2D);
+                    GLManager.GL.Enable(Silk.NET.OpenGL.Legacy.GLEnum.Blend);
+                    GLManager.GL.Enable(Silk.NET.OpenGL.Legacy.GLEnum.AlphaTest);
+                    GLManager.GL.BlendFunc(Silk.NET.OpenGL.Legacy.GLEnum.SrcAlpha, Silk.NET.OpenGL.Legacy.GLEnum.OneMinusSrcAlpha);
+                    GLManager.GL.Color4(1.0f, 1.0f, 1.0f, 1.0f);
+                }
+                catch { }
+
+                try { _searchField.DrawTextBox(); } catch { }
+
+                try
+                {
+                    GLManager.GL.Color4(1.0f, 1.0f, 1.0f, 1.0f);
+                    GLManager.GL.Enable(Silk.NET.OpenGL.Legacy.GLEnum.Lighting);
+                    GLManager.GL.Enable(Silk.NET.OpenGL.Legacy.GLEnum.DepthTest);
+                }
+                catch { }
+            }
             
         }
         catch (System.Exception ex)
