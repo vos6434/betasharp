@@ -122,12 +122,16 @@ public class NostalgiaIconButton : GuiButton
             int imgH = tex.Height;
             float fu = 1.0f / (float)imgW;
             float fv = 1.0f / (float)imgH;
+
+                // If hovered, sample the icon 20 pixels to the right in the source texture
+                int activeSrcU = _srcU + (isHovered ? 20 : 0);
+                int activeSrcW = _srcWidth;
                 var tess = Tessellator.instance;
                 tess.startDrawingQuads();
-                tess.addVertexWithUV(XPosition + 0, YPosition + _height, _zLevel, (double)((_srcU + 0) * fu), (double)((_srcV + _height) * fv));
-                tess.addVertexWithUV(XPosition + _width, YPosition + _height, _zLevel, (double)((_srcU + _width) * fu), (double)((_srcV + _height) * fv));
-                tess.addVertexWithUV(XPosition + _width, YPosition + 0, _zLevel, (double)((_srcU + _width) * fu), (double)((_srcV + 0) * fv));
-                tess.addVertexWithUV(XPosition + 0, YPosition + 0, _zLevel, (double)((_srcU + 0) * fu), (double)((_srcV + 0) * fv));
+                tess.addVertexWithUV(XPosition + 0, YPosition + _height, _zLevel, (double)((activeSrcU + 0) * fu), (double)((_srcV + _height) * fv));
+                tess.addVertexWithUV(XPosition + _width, YPosition + _height, _zLevel, (double)((activeSrcU + activeSrcW) * fu), (double)((_srcV + _height) * fv));
+                tess.addVertexWithUV(XPosition + _width, YPosition + 0, _zLevel, (double)((activeSrcU + activeSrcW) * fu), (double)((_srcV + 0) * fv));
+                tess.addVertexWithUV(XPosition + 0, YPosition + 0, _zLevel, (double)((activeSrcU + 0) * fu), (double)((_srcV + 0) * fv));
                 tess.draw();
             }
 
