@@ -38,6 +38,7 @@ public class NostalgiaGui : GuiContainer
         int iconH = 10;
 
         // Source coordinates within the cached GUI texture (pixels)
+        // Use the red square icons area in the terminal overlay (two 10x10 icons)
         int srcU0 = 170;
         int srcV0 = 5;
         int srcU1 = 180;
@@ -128,7 +129,8 @@ public class NostalgiaGui : GuiContainer
                 var tex = NostalgiaBase.CachedGuiHandle.Texture;
                 if (tex != null && NostalgiaBase.CachedGuiImageWidth > 0 && NostalgiaBase.CachedGuiImageHeight > 0)
                 {
-                    DrawTexturedModalRectUV(guiLeft, guiTop, 0, 0, NostalgiaBase.CachedGuiImageWidth, NostalgiaBase.CachedGuiImageHeight, tex.Width, tex.Height);
+                    // Only draw the GUI crop (width=_xSize, height=_ySize) from the cached texture
+                    DrawTexturedModalRectUV(guiLeft, guiTop, 0, 0, _xSize, _ySize, tex.Width, tex.Height);
                 }
             }
             // (no diagnostic logs)
