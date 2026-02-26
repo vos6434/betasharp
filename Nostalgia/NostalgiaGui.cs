@@ -38,20 +38,21 @@ public class NostalgiaGui : GuiContainer
         int iconH = 10;
 
         // Source coordinates within the cached GUI texture (pixels)
-        // Use the red square icons area in the terminal overlay (two 10x10 icons)
-        int srcU0 = 170;
-        int srcV0 = 5;
-        int srcU1 = 180;
-        int srcV1 = 5;
+        // Top-right icons in terminal.png (10x10 each). Shifted left 1px per request.
+        int srcU0 = 216;
+        int srcV0 = 0;
+        int srcU1 = 226;
+        int srcV1 = 0;
 
-        // Screen positions are the overlay draw position plus the source offsets
-        int x0 = guiLeft + srcU0;
-        int y0 = guiTop + srcV0;
-        int x1 = guiLeft + srcU1;
-        int y1 = guiTop + srcV1;
+        // Screen positions: place the buttons over the red-square area in the GUI crop
+        // Red square target (in GUI pixels): top-left = (170,5) and (180,5)
+        int x0 = guiLeft + 170;
+        int y0 = guiTop + 5;
+        int x1 = guiLeft + 180;
+        int y1 = guiTop + 5;
 
-        _controlList.Add(new NostalgiaIconButton(1000, x0, y0, iconW, iconH, srcU0, srcV0));
-        _controlList.Add(new NostalgiaIconButton(1001, x1, y1, iconW, iconH, srcU1, srcV1));
+        _controlList.Add(new NostalgiaIconButton(1000, x0, y0, iconW, iconH, srcU0, srcV0, 10, 10));
+        _controlList.Add(new NostalgiaIconButton(1001, x1, y1, iconW, iconH, srcU1, srcV1, 10, 10));
     }
 
     protected override void ActionPerformed(BetaSharp.Client.Guis.GuiButton button)

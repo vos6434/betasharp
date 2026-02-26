@@ -18,6 +18,7 @@ public class NostalgiaBase : ModBase
     // Centralized cached GUI texture (shared across GUI instances)
     public static TextureHandle? CachedGuiHandle;
     public static string? CachedGuiResourceName;
+    public static SixLabors.ImageSharp.Image<SixLabors.ImageSharp.PixelFormats.Rgba32>? CachedGuiImage;
     public static int CachedGuiImageWidth = 0;
     public static int CachedGuiImageHeight = 0;
     private static bool _guiLoaded = false;
@@ -268,12 +269,89 @@ public class NostalgiaBase : ModBase
             var guiRes = asm.GetManifestResourceNames()
                 .FirstOrDefault(n => n.IndexOf(".assets.gui.", System.StringComparison.OrdinalIgnoreCase) >= 0 && n.EndsWith(".png", System.StringComparison.OrdinalIgnoreCase));
 
-            if (guiRes == null) { _guiLoaded = true; return; }
+            Stream? resourceStream = null;
+            string? diskFallbackPath = null;
 
-            using var s = asm.GetManifestResourceStream(guiRes);
-            if (s == null) { _guiLoaded = true; return; }
+            if (guiRes != null)
+            {
+                resourceStream = asm.GetManifestResourceStream(guiRes);
+            }
 
-            using Image<Rgba32> img = Image.Load<Rgba32>(s);
+            // If embedded resource not present, try to find the file on disk under likely mod/workspace paths.
+            if (resourceStream == null)
+            {
+                string baseDir = AppContext.BaseDirectory;
+                var dir = new DirectoryInfo(baseDir);
+
+                while (dir != null)
+                {
+                    try
+                    {
+                        // Fast check common candidate locations first
+                        var candidates = new[] {
+                            Path.Combine(dir.FullName, "mods", "Nostalgia", "assets", "gui", "terminal.png"),
+                            Path.Combine(dir.FullName, "Nostalgia", "assets", "gui", "terminal.png"),
+                            Path.Combine(dir.FullName, "mods", "betasharp", "Nostalgia", "assets", "gui", "terminal.png")
+                        };
+
+                        foreach (var candidate in candidates)
+                        {
+                            if (File.Exists(candidate))
+                            {
+                                resourceStream = File.OpenRead(candidate);
+                                diskFallbackPath = candidate;
+                                Console.WriteLine($"Nostalgia: loaded GUI texture from disk fallback: {candidate}");
+                                break;
+                            }
+                        }
+
+                        if (resourceStream != null) break;
+
+                        // If not found, try a limited recursive search for terminal.png under this directory.
+                        // Avoid searching inside large build folders by skipping paths containing /bin/ or /obj/.
+                        if (!dir.FullName.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar) &&
+                            !dir.FullName.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar))
+                        {
+                            try
+                            {
+                                var matches = Directory.EnumerateFiles(dir.FullName, "terminal.png", SearchOption.AllDirectories);
+                                foreach (var m in matches)
+                                {
+                                    // prefer matches that look like an assets/gui path
+                                    if (m.IndexOf(Path.Combine("assets", "gui"), StringComparison.OrdinalIgnoreCase) >= 0 &&
+                                        m.IndexOf("Nostalgia", StringComparison.OrdinalIgnoreCase) >= 0)
+                                    {
+                                        resourceStream = File.OpenRead(m);
+                                        diskFallbackPath = m;
+                                        Console.WriteLine($"Nostalgia: loaded GUI texture from disk (recursive): {m}");
+                                        break;
+                                    }
+                                }
+
+                                if (resourceStream != null) break;
+
+                                // if none matched the preferred pattern, take the first found
+                                var first = matches.FirstOrDefault();
+                                if (first != null)
+                                {
+                                    resourceStream = File.OpenRead(first);
+                                    diskFallbackPath = first;
+                                    Console.WriteLine($"Nostalgia: loaded GUI texture from disk (first match): {first}");
+                                    break;
+                                }
+                            }
+                            catch { }
+                        }
+                    }
+                    catch { }
+
+                    dir = dir.Parent;
+                }
+            }
+
+            if (resourceStream == null) { _guiLoaded = true; return; }
+
+            using Image<Rgba32> img = Image.Load<Rgba32>(resourceStream);
             CachedGuiImageWidth = img.Width;
             CachedGuiImageHeight = img.Height;
 
@@ -281,8 +359,15 @@ public class NostalgiaBase : ModBase
             Image<Rgba32> canvas = new Image<Rgba32>(TextureCanvas, TextureCanvas);
             canvas.Mutate(ctx => ctx.DrawImage(img, new SixLabors.ImageSharp.Point(0, 0), 1f));
 
+            // Keep an in-memory copy for debug sampling and verification
+            try
+            {
+                CachedGuiImage = canvas.Clone();
+            }
+            catch { CachedGuiImage = null; }
+
             CachedGuiHandle = mc.textureManager.Load(canvas);
-            CachedGuiResourceName = guiRes;
+            CachedGuiResourceName = diskFallbackPath ?? guiRes;
             _guiLoaded = true;
         }
         catch (Exception ex)
