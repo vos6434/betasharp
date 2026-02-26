@@ -19,13 +19,16 @@ public class NostalgiaGui : GuiContainer
     public NostalgiaGui() : base(CreateScreenHandler())
     {
         _xSize = 194;
-        // slightly reduce height so the GUI sits a bit higher on-screen
-        _ySize = 202;
+        // Use 5 rows of 9 slots (45-slot container) and compute height to match background pieces
+        int inventoryRows = 5;
+        // height = top (inventoryRows*18 + 17) + bottom (96)
+        _ySize = inventoryRows * 18 + 17 + 96;
     }
 
     private static ScreenHandler CreateScreenHandler()
     {
-        var inv = new InventoryBasic("Nostalgia", 9);
+        // 5 rows * 9 slots = 45 slots total
+        var inv = new InventoryBasic("Nostalgia", 45);
         var mc = Minecraft.INSTANCE;
         IInventory? playerInv = null;
         try
@@ -40,8 +43,9 @@ public class NostalgiaGui : GuiContainer
             playerInv = new InventoryBasic("player", 36);
         }
 
-        // Shift player inventory down by 10 pixels to align the hotbar with the custom GUI artwork.
-        const int playerYOffset = 71;
+        // Shift player inventory vertically to align the hotbar with the custom GUI artwork.
+        // Decrease this value to move the player inventory higher on-screen.
+        const int playerYOffset = -1;
         return new NostalgiaScreenHandler(playerInv, inv, playerYOffset);
     }
 
@@ -66,7 +70,9 @@ public class NostalgiaGui : GuiContainer
             int guiLeft = (Width - _xSize) / 2;
             int guiTop = (Height - _ySize) / 2;
 
-            int inventoryRows = 1; // our container uses 9 slots -> 1 row
+            // Compute inventoryRows from the GUI height so the vanilla background pieces match our container.
+            int inventoryRows = (_ySize - 17 - 96) / 18;
+            if (inventoryRows < 1) inventoryRows = 1;
             DrawTexturedModalRect(guiLeft, guiTop, 0, 0, _xSize, inventoryRows * 18 + 17);
             DrawTexturedModalRect(guiLeft, guiTop + inventoryRows * 18 + 17, 0, 126, _xSize, 96);
 
