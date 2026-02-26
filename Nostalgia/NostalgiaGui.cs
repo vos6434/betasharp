@@ -65,11 +65,13 @@ public class NostalgiaGui : GuiContainer
         string title = "Terminal";
         int titleWidth = FontRenderer.GetStringWidth(title);
         int leftInset = 8;
-        int sfX = guiLeft + leftInset + titleWidth + 39; // small gap after title (+3px nudge)
+            int sfX = guiLeft + leftInset + titleWidth + 13; // use fixed sweetspot relative to title
         int iconLeft = guiLeft + 170; // left edge of the red-square / icon area
-        int sfW = Math.Max(80, iconLeft - sfX - 6);
-        int sfY = guiTop + 4; // align with top title baseline
-        int sfH = 12;
+        // the black box in the GUI texture is 108x12 — match that width exactly so the
+        // GuiTextField covers the artwork. Fall back to a sensible minimum if needed.
+        int sfW = 106;
+        int sfY = guiTop + 5; // align with top title baseline
+        int sfH = 10; // reduce height by 2px to match artwork
 
         searchX = sfX; searchY = sfY; searchW = sfW; searchH = sfH;
 
