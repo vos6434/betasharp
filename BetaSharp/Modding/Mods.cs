@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Immutable;
 using System.Reflection;
 using System.Runtime.Loader;
@@ -12,6 +13,9 @@ public class Mods
     public static string ConfigFolder { get; private set; } = null!;
 
     private static Dictionary<ModBase, ModLoadContext> _modLoadContexts { get; set; } = [];
+    // Actions that mods can register during Initialize to run after the client's texture manager and related rendering
+    // infrastructure has been created in `Minecraft.startGame()`.
+    public static List<Action> PostTextureInitActions { get; } = new();
     private static bool _loaded = false;
     private static readonly ILogger s_logger = Log.Instance.For<Mods>();
 

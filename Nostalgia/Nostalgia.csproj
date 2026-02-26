@@ -27,6 +27,11 @@
     </PackageReference>
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Embed all files under assets into the mod DLL so mods can load textures at runtime -->
+    <EmbeddedResource Include="assets\**\*" Condition="Exists('assets')" />
+  </ItemGroup>
+
   <Target Name="CopyModDllToModsFolder" AfterTargets="Build" Condition="'$(DesignTimeBuild)' != 'true'">
     <MakeDir Directories="$(ModsOutputDir)" />
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ModsOutputDir)" SkipUnchangedFiles="true" />

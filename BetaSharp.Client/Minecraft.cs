@@ -213,6 +213,16 @@ public partial class Minecraft
         }
         texturePackList = new TexturePacks(this, new DirectoryInfo(mcDataDir.getAbsolutePath()));
         textureManager = new TextureManager(this, texturePackList, options);
+
+        // Allow mods to register dynamic textures or perform texture-dependent initialization now that the texture manager exists
+        try
+        {
+            foreach (var action in BetaSharp.Modding.Mods.PostTextureInitActions)
+            {
+                try { action(); } catch (Exception ex) { _logger.LogError(ex, "Error in mod PostTextureInit action"); }
+            }
+        }
+        catch { }
         fontRenderer = new TextRenderer(options, textureManager);
         WaterColors.loadColors(textureManager.GetColors("/misc/watercolor.png"));
         GrassColors.loadColors(textureManager.GetColors("/misc/grasscolor.png"));
