@@ -3,6 +3,11 @@ using BetaSharp.Modding;
 using System.Linq;
 using System.IO;
 using System.Reflection;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing;
+using BetaSharp.Client;
+using BetaSharp.Client.Rendering.Core.Textures;
 
 namespace Nostalgia;
 
@@ -10,6 +15,12 @@ namespace Nostalgia;
 public class NostalgiaBase : ModBase
 {
     private bool _registered = false;
+    // Centralized cached GUI texture (shared across GUI instances)
+    public static TextureHandle? CachedGuiHandle;
+    public static string? CachedGuiResourceName;
+    public static int CachedGuiImageWidth = 0;
+    public static int CachedGuiImageHeight = 0;
+    private static bool _guiLoaded = false;
     public override bool HasOptionsMenu => false;
 
     public NostalgiaBase()
@@ -215,6 +226,7 @@ public class NostalgiaBase : ModBase
                     if (mcNow != null && mcNow.textureManager != null)
                     {
                         DoRegister();
+                        try { EnsureGuiTextureLoaded(mcNow); } catch { }
                     }
                     else
                     {
@@ -227,6 +239,7 @@ public class NostalgiaBase : ModBase
                                 try
                                 {
                                     DoRegister();
+                                    try { EnsureGuiTextureLoaded(BetaSharp.Client.Minecraft.INSTANCE); } catch { }
                                 }
                                 catch (Exception ex)
                                 {
@@ -244,6 +257,41 @@ public class NostalgiaBase : ModBase
         }
     }
 
+    public static void EnsureGuiTextureLoaded(Minecraft mc)
+    {
+        if (_guiLoaded) return;
+        if (mc == null || mc.textureManager == null) return;
+
+        try
+        {
+            var asm = typeof(NostalgiaBase).Assembly;
+            var guiRes = asm.GetManifestResourceNames()
+                .FirstOrDefault(n => n.IndexOf(".assets.gui.", System.StringComparison.OrdinalIgnoreCase) >= 0 && n.EndsWith(".png", System.StringComparison.OrdinalIgnoreCase));
+
+            if (guiRes == null) { _guiLoaded = true; return; }
+
+            using var s = asm.GetManifestResourceStream(guiRes);
+            if (s == null) { _guiLoaded = true; return; }
+
+            using Image<Rgba32> img = Image.Load<Rgba32>(s);
+            CachedGuiImageWidth = img.Width;
+            CachedGuiImageHeight = img.Height;
+
+            const int TextureCanvas = 256;
+            Image<Rgba32> canvas = new Image<Rgba32>(TextureCanvas, TextureCanvas);
+            canvas.Mutate(ctx => ctx.DrawImage(img, new SixLabors.ImageSharp.Point(0, 0), 1f));
+
+            CachedGuiHandle = mc.textureManager.Load(canvas);
+            CachedGuiResourceName = guiRes;
+            _guiLoaded = true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Nostalgia: failed to load cached GUI texture: " + ex);
+            _guiLoaded = true;
+        }
+    }
+
     public override void PostInitialize(Side side)
     {
         Console.WriteLine("PostInitialize called for Nostalgia mod");
@@ -253,5 +301,14 @@ public class NostalgiaBase : ModBase
     public override void Unload(Side side)
     {
         Console.WriteLine("Nostalgia mod is unloading");
+        try
+        {
+            var mc = BetaSharp.Client.Minecraft.INSTANCE;
+            if (mc != null && mc.textureManager != null && CachedGuiHandle != null)
+            {
+                mc.textureManager.Delete(CachedGuiHandle);
+            }
+        }
+        catch { }
     }
 }

@@ -15,15 +15,12 @@ namespace Nostalgia;
 public class NostalgiaGui : GuiContainer
 {
     private const int TextureCanvas = 256;
-    private TextureHandle? _cachedHandle;
-    private string? _cachedResourceName;
-    private int _cachedImageWidth = 0;
-    private int _cachedImageHeight = 0;
 
     public NostalgiaGui() : base(CreateScreenHandler())
     {
-        _xSize = 176;
-        _ySize = 166;
+        _xSize = 194;
+        // slightly reduce height so the GUI sits a bit higher on-screen
+        _ySize = 202;
     }
 
     private static ScreenHandler CreateScreenHandler()
@@ -43,7 +40,9 @@ public class NostalgiaGui : GuiContainer
             playerInv = new InventoryBasic("player", 36);
         }
 
-        return new GenericContainerScreenHandler(playerInv, inv);
+        // Shift player inventory down by 10 pixels to align the hotbar with the custom GUI artwork.
+        const int playerYOffset = 71;
+        return new NostalgiaScreenHandler(playerInv, inv, playerYOffset);
     }
 
     protected override void DrawGuiContainerForegroundLayer()
@@ -58,40 +57,8 @@ public class NostalgiaGui : GuiContainer
 
         try
         {
-            var asm = typeof(NostalgiaGui).Assembly;
-            var guiRes = asm.GetManifestResourceNames()
-                .FirstOrDefault(n => n.IndexOf(".assets.gui.", System.StringComparison.OrdinalIgnoreCase) >= 0 && n.EndsWith(".png", System.StringComparison.OrdinalIgnoreCase));
-            // create a full 256x256 canvas so DrawTexturedModalRect texture coords (1/256) match
-            Image<Rgba32> canvas = new Image<Rgba32>(TextureCanvas, TextureCanvas);
-
-            if (guiRes != null)
-            {
-                // Load and resize the embedded GUI image once and cache the texture handle
-                if (_cachedHandle == null || _cachedResourceName != guiRes)
-                {
-                    using var s = asm.GetManifestResourceStream(guiRes);
-                    if (s != null)
-                    {
-                        using Image<Rgba32> img = Image.Load<Rgba32>(s);
-                        // preserve the original image size — do not resize
-                        _cachedImageWidth = img.Width;
-                        _cachedImageHeight = img.Height;
-                        // draw the original GUI image into the top-left of the 256x256 canvas
-                        canvas.Mutate(ctx => ctx.DrawImage(img, new SixLabors.ImageSharp.Point(0, 0), 1f));
-
-                        // create and cache the texture handle for the full 256x256 canvas
-                        _cachedHandle = mc.textureManager.Load(canvas);
-                        _cachedResourceName = guiRes;
-
-                        try
-                        {
-                            var tex = _cachedHandle.Texture;
-                            System.Console.WriteLine($"NostalgiaGui: cached handle created: src={tex?.Source}, texW={tex?.Width}, texH={tex?.Height}, imgW={_cachedImageWidth}, imgH={_cachedImageHeight}");
-                        }
-                        catch { }
-                    }
-                }
-            }
+            // Ensure the mod's centralized cached GUI texture is loaded (NostalgiaBase will no-op if already loaded)
+            try { NostalgiaBase.EnsureGuiTextureLoaded(mc); } catch { }
 
             // Draw vanilla container background first so slot positions match exactly.
             mc.textureManager.BindTexture(mc.textureManager.GetTextureId("/gui/container.png"));
@@ -104,31 +71,16 @@ public class NostalgiaGui : GuiContainer
             DrawTexturedModalRect(guiLeft, guiTop + inventoryRows * 18 + 17, 0, 126, _xSize, 96);
 
             // If we have a cached mod texture, overlay it on top of the vanilla background.
-            if (_cachedHandle != null)
+            if (NostalgiaBase.CachedGuiHandle != null)
             {
-                mc.textureManager.BindTexture(_cachedHandle);
-                try
+                mc.textureManager.BindTexture(NostalgiaBase.CachedGuiHandle);
+                var tex = NostalgiaBase.CachedGuiHandle.Texture;
+                if (tex != null && NostalgiaBase.CachedGuiImageWidth > 0 && NostalgiaBase.CachedGuiImageHeight > 0)
                 {
-                    var tex = _cachedHandle.Texture;
-                    System.Console.WriteLine($"NostalgiaGui: binding cached texture src={tex?.Source} size={tex?.Width}x{tex?.Height} img={_cachedImageWidth}x{_cachedImageHeight}");
-                    if (tex != null && _cachedImageWidth > 0 && _cachedImageHeight > 0)
-                    {
-                        DrawTexturedModalRectUV(guiLeft, guiTop, 0, 0, _cachedImageWidth, _cachedImageHeight, tex.Width, tex.Height);
-                    }
-                }
-                catch { }
-            }
-
-            // Log first slot coordinates for alignment checks
-            try
-            {
-                if (InventorySlots?.slots != null && InventorySlots.slots.size() > 0)
-                {
-                    var first = (BetaSharp.Screens.Slots.Slot)InventorySlots.slots.get(0);
-                    System.Console.WriteLine($"NostalgiaGui: gui={_xSize}x{_ySize}, first slot at x={first.xDisplayPosition}, y={first.yDisplayPosition}");
+                    DrawTexturedModalRectUV(guiLeft, guiTop, 0, 0, NostalgiaBase.CachedGuiImageWidth, NostalgiaBase.CachedGuiImageHeight, tex.Width, tex.Height);
                 }
             }
-            catch { }
+            // (no diagnostic logs)
 
             
         }
