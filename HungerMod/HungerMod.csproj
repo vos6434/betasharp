@@ -13,7 +13,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\BetaSharp.Client\BetaSharp.Client.csproj" />
+    <!-- Use compiled BetaSharp.Client DLL if available to avoid circular project refs -->
+    <Reference Include="BetaSharp.Client" Condition="Exists('..\BetaSharp.Client\bin\$(Configuration)\net10.0\BetaSharp.Client.dll')">
+      <HintPath>..\BetaSharp.Client\bin\$(Configuration)\net10.0\BetaSharp.Client.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <ProjectReference Include="..\BetaSharp\BetaSharp.csproj" />
   </ItemGroup>
 

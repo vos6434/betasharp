@@ -35,8 +35,19 @@ public class NostalgiaBase : ModBase
         try
         {
             var asm = typeof(NostalgiaBase).Assembly;
+            try
+            {
+                var resList = asm.GetManifestResourceNames().Where(n => n.IndexOf(".assets.", StringComparison.OrdinalIgnoreCase) >= 0).ToList();
+                Console.WriteLine("Nostalgia: embedded resources containing '.assets.':");
+                foreach (var r in resList) Console.WriteLine("  " + r);
+            }
+            catch { }
             var resNames = asm.GetManifestResourceNames()
-                .Where(n => n.EndsWith(".png", StringComparison.OrdinalIgnoreCase) && (n.Contains(".assets.blocks.") || n.Contains(".assets\\blocks\\")))
+                .Where(n => n.EndsWith(".png", StringComparison.OrdinalIgnoreCase) && (
+                    n.IndexOf(".assets.blocks.", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    n.IndexOf(".assets\\blocks\\", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    n.IndexOf(".assets.gui.", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    n.IndexOf(".assets\\gui\\", System.StringComparison.OrdinalIgnoreCase) >= 0))
                 .ToList();
 
             if (resNames.Count > 0)
@@ -155,21 +166,12 @@ public class NostalgiaBase : ModBase
                             return;
                         }
 
-                        var blockType = typeof(BetaSharp.Blocks.Block);
-                        var ctor = blockType.GetConstructor(BindingFlags.Instance | BindingFlags.NonPublic, null, new Type[] { typeof(int), typeof(int), typeof(BetaSharp.Blocks.Materials.Material) }, null);
-                        if (ctor == null)
+                        // create a custom NostalgiaBlock so we can open a GUI on right-click
+                        try
                         {
-                            Console.WriteLine("Nostalgia: could not find non-public Block constructor via reflection.");
-                            return;
-                        }
-
-                        var stone = BetaSharp.Blocks.Materials.Material.Stone;
-                        var instance = ctor.Invoke(new object[] { freeId, nextTex, stone });
-                        var blockInstance = instance as BetaSharp.Blocks.Block;
-                        if (blockInstance != null)
-                        {
-                            var setNameMethod = blockType.GetMethod("setBlockName", BindingFlags.Instance | BindingFlags.Public);
-                            setNameMethod?.Invoke(blockInstance, new object[] { "terminal" });
+                            var stone = BetaSharp.Blocks.Materials.Material.Stone;
+                            var blockInstance = new NostalgiaBlock(freeId, nextTex, stone);
+                            blockInstance.setBlockName("terminal");
                             Console.WriteLine($"Nostalgia: registered block id {freeId} with texture {nextTex}");
                             try
                             {
@@ -202,6 +204,10 @@ public class NostalgiaBase : ModBase
                             }
 
                             _registered = true;
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine("Nostalgia: failed to register block instance: " + ex);
                         }
                     }
 
