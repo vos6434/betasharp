@@ -51,7 +51,14 @@ public class InternalConnection : Connection
         while (!readQueue.isEmpty())
         {
             Packet packet = (Packet)readQueue.remove(0);
-            packet.apply(networkHandler);
+            try
+            {
+                packet.apply(networkHandler);
+            }
+            catch (System.Exception ex)
+            {
+                _logger.LogError(ex, $"[{Name}] Error while processing packet {packet?.GetType()?.Name}");
+            }
             count++;
         }
         if (count > 0)

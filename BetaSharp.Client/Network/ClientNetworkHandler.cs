@@ -574,7 +574,17 @@ public class ClientNetworkHandler : NetHandler
 
     private Entity getEntityByID(int entityId)
     {
-        return entityId == mc.player.id ? mc.player : worldClient.GetEntity(entityId);
+        if (mc != null && mc.player != null && entityId == mc.player.id)
+        {
+            return mc.player;
+        }
+
+        if (worldClient != null)
+        {
+            return worldClient.GetEntity(entityId);
+        }
+
+        return null;
     }
 
     public override void onHealthUpdate(HealthUpdateS2CPacket packet)

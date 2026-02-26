@@ -287,7 +287,14 @@ public class Connection
         while (!readQueue.isEmpty() && maxPacketsPerTick-- >= 0)
         {
             Packet packet = (Packet)readQueue.remove(0);
-            packet.apply(networkHandler);
+            try
+            {
+                packet.apply(networkHandler);
+            }
+            catch (System.Exception ex)
+            {
+                System.Console.Error.WriteLine("Error processing packet: " + ex.ToString());
+            }
         }
     }
 
