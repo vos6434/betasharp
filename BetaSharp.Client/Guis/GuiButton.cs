@@ -56,7 +56,7 @@ public class GuiButton : Gui
         return HoverState.Normal;
     }
 
-    public void DrawButton(Minecraft mc, int mouseX, int mouseY)
+    public virtual void DrawButton(Minecraft mc, int mouseX, int mouseY)
     {
         if (!Visible) return;
 

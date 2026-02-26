@@ -25,6 +25,51 @@ public class NostalgiaGui : GuiContainer
         _ySize = inventoryRows * 18 + 17 + 96;
     }
 
+    public override void InitGui()
+    {
+        base.InitGui();
+        // Place two 10x10 icon buttons exactly at the red rectangle region in the
+        // terminal.png overlay. The red rectangle spans 170,5 -> 190,15 and contains
+        // two 10x10 icons at 170,5 and 180,5 respectively.
+        int guiLeft = (Width - _xSize) / 2;
+        int guiTop = (Height - _ySize) / 2;
+
+        int iconW = 10;
+        int iconH = 10;
+
+        // Source coordinates within the cached GUI texture (pixels)
+        int srcU0 = 170;
+        int srcV0 = 5;
+        int srcU1 = 180;
+        int srcV1 = 5;
+
+        // Screen positions are the overlay draw position plus the source offsets
+        int x0 = guiLeft + srcU0;
+        int y0 = guiTop + srcV0;
+        int x1 = guiLeft + srcU1;
+        int y1 = guiTop + srcV1;
+
+        _controlList.Add(new NostalgiaIconButton(1000, x0, y0, iconW, iconH, srcU0, srcV0));
+        _controlList.Add(new NostalgiaIconButton(1001, x1, y1, iconW, iconH, srcU1, srcV1));
+    }
+
+    protected override void ActionPerformed(BetaSharp.Client.Guis.GuiButton button)
+    {
+        if (button == null) return;
+        if (button.Id == 1000)
+        {
+            System.Console.WriteLine("NostalgiaGui: top-right left button clicked (id=1000)");
+        }
+        else if (button.Id == 1001)
+        {
+            System.Console.WriteLine("NostalgiaGui: top-right right button clicked (id=1001)");
+        }
+        else
+        {
+            base.ActionPerformed(button);
+        }
+    }
+
     private static ScreenHandler CreateScreenHandler()
     {
         // 5 rows * 9 slots = 45 slots total
