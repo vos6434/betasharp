@@ -19,6 +19,9 @@ public class NostalgiaGui : GuiContainer
         private int searchY = 0;
         private int searchW = 0;
         private int searchH = 0;
+        private const string SearchPlaceholder = "Search...";
+        private bool _searchIsPlaceholder = false;
+        private bool _searchWasFocused = false;
 
     private const int TextureCanvas = 256;
 
@@ -77,7 +80,8 @@ public class NostalgiaGui : GuiContainer
 
         if (_searchField == null)
         {
-            _searchField = new BetaSharp.Client.Guis.GuiTextField(this, FontRenderer, sfX, sfY, sfW, sfH, "");
+            _searchField = new BetaSharp.Client.Guis.GuiTextField(this, FontRenderer, sfX, sfY, sfW, sfH, SearchPlaceholder);
+            _searchIsPlaceholder = true;
         }
         else
         {
@@ -232,6 +236,38 @@ public class NostalgiaGui : GuiContainer
                 }
                 catch { }
 
+                // placeholder behavior: clear placeholder text when the field gains focus,
+                // and restore it when it loses focus and is empty.
+                try
+                {
+                    bool isFocused = _searchField.IsFocused;
+                    if (isFocused && !_searchWasFocused)
+                    {
+                        // gained focus
+                        if (_searchIsPlaceholder)
+                        {
+                            _searchField.SetText("");
+                            _searchIsPlaceholder = false;
+                        }
+                    }
+                    else if (!isFocused && _searchWasFocused)
+                    {
+                        // lost focus
+                        try
+                        {
+                            var txt = _searchField.GetText();
+                            if (string.IsNullOrEmpty(txt))
+                            {
+                                _searchField.SetText(SearchPlaceholder);
+                                _searchIsPlaceholder = true;
+                            }
+                        }
+                        catch { }
+                    }
+                    _searchWasFocused = isFocused;
+                }
+                catch { }
+
                 try
                 {
                     GLManager.GL.Disable(Silk.NET.OpenGL.Legacy.GLEnum.Lighting);
@@ -244,7 +280,24 @@ public class NostalgiaGui : GuiContainer
                 }
                 catch { }
 
-                try { _searchField.DrawTextBox(); } catch { }
+                try
+                {
+                    if (_searchIsPlaceholder)
+                    {
+                        // Draw textbox without text, then render grey placeholder text ourselves
+                        string prev = "";
+                        try { prev = _searchField.GetText() ?? ""; } catch { }
+                        try { _searchField.SetText(""); } catch { }
+                        try { _searchField.DrawTextBox(); } catch { }
+                        try { DrawString(FontRenderer, SearchPlaceholder, searchX + 4, searchY + (searchH - 8) / 2, 0x707070); } catch { }
+                        try { _searchField.SetText(prev); } catch { }
+                    }
+                    else
+                    {
+                        _searchField.DrawTextBox();
+                    }
+                }
+                catch { }
 
                 try
                 {
